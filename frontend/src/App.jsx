@@ -9,7 +9,41 @@ import EndGame from './components/EndGame';
 import ChatBox from './components/ChatBox';
 import HunterPhase from './components/HunterPhase';
 import WitchPhase from './components/WitchPhase';
-import { playNightSound, playDaySound } from './utils/sound';
+import RoleGallery from './components/RoleGallery';
+import PlayersPanel from './components/PlayersPanel';
+import GameLog from './components/GameLog';
+import { getRole } from './utils/roles';
+import { playNightSound, playDaySound, playAlertSound } from './utils/sound';
+
+// Phase → HUD label. dayNumber is filled in at render time.
+const PHASE_LABELS = {
+  ROLE_VIEW: { icon: '🎭', text: 'ดูบทบาท' },
+  NIGHT: { icon: '🌙', text: 'คืนที่' },
+  NIGHT_WITCH: { icon: '🧙', text: 'ช่วงแม่มด · คืนที่' },
+  DAY: { icon: '☀️', text: 'วันที่' },
+  VOTING: { icon: '🗳️', text: 'โหวต · วันที่' },
+  HUNTER_REVENGE: { icon: '🏹', text: 'ล้างแค้นนายพราน' },
+  END_GAME: { icon: '🏁', text: 'จบเกม' },
+};
+
+// Does the current player have a pending action this phase? (used for the alert)
+function needsMyAction(gs, me) {
+  if (!gs || !me) return false;
+  if (gs.phase === 'HUNTER_REVENGE') return me.id === gs.pendingHunter;
+  if (!me.isAlive) return false;
+  switch (gs.phase) {
+    case 'NIGHT':
+      if (['Werewolf', 'Seer', 'Doctor'].includes(me.role)) return !me.hasActed;
+      if (me.role === 'Cupid') return gs.lovers?.length !== 2 && !me.hasActed;
+      return false;
+    case 'NIGHT_WITCH':
+      return me.role === 'Witch' && !me.hasActed;
+    case 'VOTING':
+      return !me.hasVoted;
+    default:
+      return false;
+  }
+}
 
 // In development, you might want this to point to localhost:3001
 // In production, it would be the deployed backend URL
@@ -30,9 +64,23 @@ function App() {
   const [isKicked, setIsKicked] = useState(false);
   const [publicRooms, setPublicRooms] = useState([]);
   const [showPublicRooms, setShowPublicRooms] = useState(false);
+  const [publicName, setPublicName] = useState('');
+  const [showManual, setShowManual] = useState(false);
+  const [showRoleHelp, setShowRoleHelp] = useState(false);
+  const [activePanel, setActivePanel] = useState(null); // 'players' | 'log' | null
   const previousPhaseRef = useRef(null);
+  const wasMyTurnRef = useRef(false);
 
   const currentPlayer = gameState?.players?.find(p => p.id === playerId);
+  const myTurn = needsMyAction(gameState, currentPlayer);
+
+  // Chime once when it becomes the current player's turn to act
+  useEffect(() => {
+    if (myTurn && !wasMyTurnRef.current) {
+      playAlertSound();
+    }
+    wasMyTurnRef.current = myTurn;
+  }, [myTurn]);
 
   useEffect(() => {
     const savedPlayerId = sessionStorage.getItem('werewolf_playerId');
@@ -179,6 +227,20 @@ function App() {
     socket.emit('hunter_action', { roomCode: gameState.roomCode, targetId });
   };
 
+  const handleLeaveRoom = () => {
+    if (gameState) {
+      socket.emit('leave_room', gameState.roomCode);
+    }
+    setGameState(null);
+    setPlayerId(null);
+    setSeerResult(null);
+    setNightResult([]);
+    setVoteResult(null);
+    setTimeRemaining(null);
+    sessionStorage.removeItem('werewolf_playerId');
+    sessionStorage.removeItem('werewolf_roomCode');
+  };
+
   const renderPhase = () => {
     if (isKicked) {
        return (
@@ -195,6 +257,18 @@ function App() {
           <div className="glass-panel">
              <h2>ห้องสาธารณะที่เปิดอยู่</h2>
              <button className="secondary" onClick={() => setShowPublicRooms(false)} style={{ marginBottom: '1rem', width: 'auto' }}>← กลับ</button>
+
+             {error && <p style={{ color: '#ff4b4b', textAlign: 'center', marginBottom: '1rem' }}>{error}</p>}
+
+             <input
+                type="text"
+                placeholder="กรอกชื่อของคุณก่อนเข้าห้อง"
+                value={publicName}
+                onChange={(e) => setPublicName(e.target.value)}
+                maxLength={15}
+                style={{ marginBottom: '1rem' }}
+             />
+
              {publicRooms.length === 0 ? (
                 <p style={{ textAlign: 'center', color: '#aaa', padding: '2rem 0' }}>ไม่มีห้องที่กำลังรอผู้เล่นอยู่ขณะนี้</p>
              ) : (
@@ -205,12 +279,16 @@ function App() {
                             <strong style={{ fontSize: '1.2rem', color: 'var(--text-highlight)' }}>{r.roomCode}</strong>
                             <span style={{ marginLeft: '1rem', color: '#ccc' }}>โดย: {r.hostName} ({r.playerCount}/10 คน)</span>
                          </div>
-                         <button style={{ width: 'auto', padding: '0.5rem 1rem' }} onClick={() => {
-                            setShowPublicRooms(false);
-                            // We can just set error if there's no name, but let's let Lobby handle the join
-                            // since Lobby needs a name. So we can't join directly if we don't have a name.
-                            // Actually, just alert if no name.
-                         }}>จำรหัสและกลับไปกรอก (หน้านี้สำหรับดูเท่านั้นตอนนี้)</button>
+                         <button
+                            style={{ width: 'auto', padding: '0.5rem 1rem' }}
+                            disabled={!publicName.trim()}
+                            onClick={() => {
+                               handleJoinRoom(r.roomCode, publicName.trim());
+                               setShowPublicRooms(false);
+                            }}
+                         >
+                            เข้าร่วม
+                         </button>
                       </li>
                    ))}
                 </ul>
@@ -286,6 +364,13 @@ function App() {
   const isNight = gameState?.phase === 'NIGHT';
   const totalTime = gameState?.settings?.timer || 60;
 
+  const inGame = gameState && !isKicked && !showPublicRooms && gameState.phase !== 'LOBBY';
+  const phaseLabel = gameState ? PHASE_LABELS[gameState.phase] : null;
+  const dayNumber = gameState?.dayNumber || 0;
+  const showsDay = ['NIGHT', 'NIGHT_WITCH', 'DAY', 'VOTING'].includes(gameState?.phase);
+  const nightProgress = gameState?.nightProgress;
+  const voteProgress = gameState?.voteProgress;
+
   return (
     <>
       {/* Background Transition Effect */}
@@ -326,7 +411,7 @@ function App() {
       )}
 
       {gameState?.phase !== 'LOBBY' && currentPlayer?.role && (
-        <div style={{ position: 'fixed', top: 20, right: 20, display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(0,0,0,0.6)', padding: '8px 12px', borderRadius: '12px', zIndex: 90, border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 4px 10px rgba(0,0,0,0.3)', backdropFilter: 'blur(5px)' }}>
+        <div onClick={() => setShowRoleHelp(true)} title="ดูรายละเอียดบทบาทของคุณ" style={{ cursor: 'pointer', position: 'fixed', top: 20, right: 20, display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(0,0,0,0.6)', padding: '8px 12px', borderRadius: '12px', zIndex: 90, border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 4px 10px rgba(0,0,0,0.3)', backdropFilter: 'blur(5px)' }}>
            <img 
               src={`/images/${currentPlayer.role}.png`} 
               alt="Role" 
@@ -363,13 +448,125 @@ function App() {
         </div>
       )}
 
+      {gameState && !isKicked && !showPublicRooms && (
+        <button
+          onClick={handleLeaveRoom}
+          style={{
+            position: 'fixed', top: 20, left: 20, zIndex: 90,
+            width: 'auto', padding: '0.5rem 1rem', fontSize: '0.85rem',
+            background: 'rgba(255, 75, 75, 0.15)', color: '#ff4b4b',
+            border: '1px solid rgba(255, 75, 75, 0.5)', borderRadius: '10px',
+            backdropFilter: 'blur(5px)'
+          }}
+        >
+          ← ออกจากห้อง
+        </button>
+      )}
+
+      {/* HUD: current phase / day + action progress + your-turn alert */}
+      {inGame && phaseLabel && (
+        <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 85, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', pointerEvents: 'none' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0,0,0,0.6)', padding: '6px 14px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.12)', backdropFilter: 'blur(5px)', fontSize: '0.9rem', fontWeight: 'bold', color: '#fff' }}>
+            <span style={{ fontSize: '1.1rem' }}>{phaseLabel.icon}</span>
+            <span>{phaseLabel.text}{showsDay ? ` ${dayNumber}` : ''}</span>
+          </div>
+
+          {gameState.phase === 'NIGHT' && nightProgress && (
+            <div style={{ fontSize: '0.75rem', color: '#ccc', background: 'rgba(0,0,0,0.5)', padding: '3px 10px', borderRadius: '12px' }}>
+              ทำแอคชั่นแล้ว {nightProgress.done}/{nightProgress.total}
+            </div>
+          )}
+          {gameState.phase === 'VOTING' && voteProgress && (
+            <div style={{ fontSize: '0.75rem', color: '#ccc', background: 'rgba(0,0,0,0.5)', padding: '3px 10px', borderRadius: '12px' }}>
+              โหวตแล้ว {voteProgress.done}/{voteProgress.total}
+            </div>
+          )}
+          {myTurn && (
+            <div className="pulse-text" style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#0b0c10', background: 'var(--text-highlight)', padding: '4px 12px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(102,252,241,0.5)' }}>
+              ⚡ ถึงตาคุณแล้ว!
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bottom-left toolbar: manual / players / log */}
+      {inGame && (
+        <div style={{ position: 'fixed', bottom: 20, left: 20, zIndex: 999, display: 'flex', gap: '8px' }}>
+          {[
+            { key: 'help', icon: '❓', title: 'คู่มือบทบาท', onClick: () => setShowManual(true) },
+            { key: 'players', icon: '👥', title: 'รายชื่อผู้เล่น', onClick: () => setActivePanel(activePanel === 'players' ? null : 'players') },
+            { key: 'log', icon: '📜', title: 'บันทึกเหตุการณ์', onClick: () => setActivePanel(activePanel === 'log' ? null : 'log') },
+          ].map(btn => (
+            <button
+              key={btn.key}
+              onClick={btn.onClick}
+              title={btn.title}
+              style={{
+                width: '46px', height: '46px', borderRadius: '50%', padding: 0, margin: 0,
+                background: (btn.key === 'players' && activePanel === 'players') || (btn.key === 'log' && activePanel === 'log') ? 'var(--accent-color)' : 'rgba(0,0,0,0.6)',
+                border: '1px solid rgba(255,255,255,0.15)', fontSize: '1.3rem', backdropFilter: 'blur(5px)',
+              }}
+            >
+              {btn.icon}
+            </button>
+          ))}
+        </div>
+      )}
+
       {renderPhase()}
-      
-      <ChatBox 
-        gameState={gameState} 
-        currentPlayer={currentPlayer} 
-        onSendMessage={handleSendMessage} 
+
+      <ChatBox
+        gameState={gameState}
+        currentPlayer={currentPlayer}
+        onSendMessage={handleSendMessage}
       />
+
+      <PlayersPanel
+        gameState={gameState}
+        currentPlayer={currentPlayer}
+        isOpen={inGame && activePanel === 'players'}
+        onClose={() => setActivePanel(null)}
+      />
+
+      <GameLog
+        gameState={gameState}
+        isOpen={inGame && activePanel === 'log'}
+        onClose={() => setActivePanel(null)}
+      />
+
+      {/* In-game manual (reuses the role gallery) */}
+      {showManual && (
+        <div
+          onClick={() => setShowManual(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ maxHeight: '90vh', overflowY: 'auto', width: '100%', display: 'flex', justifyContent: 'center' }}>
+            <RoleGallery onBack={() => setShowManual(false)} />
+          </div>
+        </div>
+      )}
+
+      {/* Your-role detail popup (opened from the role badge) */}
+      {showRoleHelp && currentPlayer?.role && (() => {
+        const r = getRole(currentPlayer.role);
+        return (
+          <div
+            onClick={() => setShowRoleHelp(false)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+          >
+            <div onClick={(e) => e.stopPropagation()} className="glass-panel" style={{ maxWidth: '360px', textAlign: 'center' }}>
+              <img src={`/images/${currentPlayer.role}.png`} alt={r.th} style={{ width: '90px', height: '90px', borderRadius: '12px', objectFit: 'cover', margin: '0 auto 1rem', display: 'block', border: `2px solid ${r.color}` }} />
+              <h2 style={{ color: r.color, margin: '0 0 0.25rem' }}>{r.th}</h2>
+              <p style={{ fontSize: '0.8rem', color: '#aaa', marginBottom: '1rem' }}>{r.faction}</p>
+              <p style={{ fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '1rem' }}>{r.desc}</p>
+              <p style={{ fontSize: '0.9rem', lineHeight: 1.5, color: '#86efac', background: 'rgba(134,239,172,0.1)', padding: '0.75rem', borderRadius: '8px', marginBottom: '1.25rem' }}>
+                🎯 {r.goal}
+              </p>
+              <button onClick={() => setShowRoleHelp(false)}>เข้าใจแล้ว</button>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }

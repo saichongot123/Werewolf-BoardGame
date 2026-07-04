@@ -15,7 +15,9 @@ function NightPhase({ gameState, currentPlayer, onAction, seerResult }) {
     );
   }
 
-  const isSpecialRole = ['Werewolf', 'Seer', 'Doctor', 'Cupid'].includes(currentPlayer.role);
+  // Cupid only picks lovers on the first night; once lovers exist, Cupid just sleeps.
+  const cupidAlreadyActed = currentPlayer.role === 'Cupid' && gameState.lovers?.length === 2;
+  const isSpecialRole = ['Werewolf', 'Seer', 'Doctor', 'Cupid'].includes(currentPlayer.role) && !cupidAlreadyActed;
   const otherAlivePlayers = gameState.players.filter(p => p.id !== currentPlayer.id && p.isAlive);
 
   const renderActionPrompt = () => {

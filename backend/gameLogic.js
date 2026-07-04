@@ -21,11 +21,30 @@ class GameRoom {
     this.lovers = []; // Array of two player IDs
     this.cupidActed = false; // Has cupid chosen lovers?
     this.witchPotions = { heal: true, poison: true };
+    this.dayNumber = 0; // Increments each night; drives the "Night N / Day N" HUD
+    this.gameLog = []; // Public event history [{ id, text }] — no hidden role info
+    this.lastVoteBreakdown = null; // Who voted whom in the most recent vote
   }
 
   addMessage(msg) {
     this.messages.push(msg);
     if (this.messages.length > 100) this.messages.shift();
+  }
+
+  addLog(text) {
+    this.gameLog.push({ id: `${this.dayNumber}-${this.gameLog.length}`, text });
+    if (this.gameLog.length > 100) this.gameLog.shift();
+  }
+
+  logNightSummary() {
+    const names = (this.lastNightKilled || [])
+      .map(id => this.getPlayer(id)?.name)
+      .filter(Boolean);
+    if (names.length > 0) {
+      this.addLog(`🌙 คืนที่ ${this.dayNumber}: ${names.join(', ')} เสียชีวิต`);
+    } else {
+      this.addLog(`🌙 คืนที่ ${this.dayNumber}: คืนอันเงียบสงบ ไม่มีใครเสียชีวิต`);
+    }
   }
 
   updateSettings(newSettings) {
@@ -61,6 +80,9 @@ class GameRoom {
     this.votes.clear();
     this.winner = null;
     this.lastNightKilled = null;
+    this.dayNumber = 0;
+    this.gameLog = [];
+    this.lastVoteBreakdown = null;
     return true;
   }
 
@@ -104,8 +126,10 @@ class GameRoom {
   }
 
   setPhase(newPhase) {
+    const enteringNight = newPhase === 'NIGHT' && this.phase !== 'NIGHT';
     this.phase = newPhase;
     if (newPhase === 'NIGHT') {
+      if (enteringNight) this.dayNumber += 1;
       this.nightActions = { werewolf: [], seer: null, doctor: null, cupid: [] };
       this.players.forEach(p => p.hasActed = false);
     } else if (newPhase === 'VOTING') {
@@ -311,31 +335,38 @@ class GameRoom {
   }
 
   resolveVoting() {
+    // Record who voted for whom so the result can be revealed publicly.
+    this.lastVoteBreakdown = Array.from(this.votes.entries()).map(([voterId, targetId]) => ({
+        voter: this.getPlayer(voterId)?.name || 'ผู้เล่น',
+        target: this.getPlayer(targetId)?.name || 'ผู้เล่น'
+    }));
+
     if (this.votes.size === 0) {
+      this.addLog(`☀️ วันที่ ${this.dayNumber}: ทุกคนงดออกเสียง ไม่มีใครถูกโหวตออก`);
       return null; // everyone skipped
     }
 
+    // Tally all votes first, then find the top candidate. Doing it in a single
+    // order-dependent pass mis-detects ties, so count fully before deciding.
     const counts = {};
-    let maxCount = 0;
-    let eliminatedId = null;
-    let tie = false;
-
-    for (let targetId of this.votes.values()) {
+    for (const targetId of this.votes.values()) {
         counts[targetId] = (counts[targetId] || 0) + 1;
-        if (counts[targetId] > maxCount) {
-            maxCount = counts[targetId];
-            eliminatedId = targetId;
-            tie = false;
-        } else if (counts[targetId] === maxCount) {
-            tie = true;
-        }
     }
 
-    if (!tie && eliminatedId) {
-        this.killPlayer(eliminatedId, 'VOTING');
-        return eliminatedId;
+    const maxCount = Math.max(...Object.values(counts));
+    const topCandidates = Object.keys(counts).filter(id => counts[id] === maxCount);
+
+    const breakdownText = this.lastVoteBreakdown.map(v => `   ${v.voter} → ${v.target}`).join('\n');
+
+    // A tie (more than one player at the top) means no one is eliminated.
+    if (topCandidates.length === 1) {
+        this.killPlayer(topCandidates[0], 'VOTING');
+        const name = this.getPlayer(topCandidates[0])?.name || 'ผู้เล่น';
+        this.addLog(`☀️ วันที่ ${this.dayNumber}: โหวตออก ${name}\n${breakdownText}`);
+        return topCandidates[0];
     }
-    return null; // Tie means no one dies
+    this.addLog(`☀️ วันที่ ${this.dayNumber}: คะแนนเสมอ ไม่มีใครถูกโหวตออก\n${breakdownText}`);
+    return null;
   }
 
   checkWinCondition() {
@@ -361,6 +392,12 @@ class GameRoom {
   resetGame() {
       this.phase = 'LOBBY';
       this.winner = null;
+      this.dayNumber = 0;
+      this.gameLog = [];
+      this.lastVoteBreakdown = null;
+      this.lovers = [];
+      this.cupidActed = false;
+      this.witchPotions = { heal: true, poison: true };
       this.players.forEach(p => {
           p.role = null;
           p.isAlive = true;
@@ -419,6 +456,15 @@ class GameRoom {
         return m;
     });
 
+    // Aggregate progress counters — numbers only, so they never leak who holds a role.
+    const alive = this.getAlivePlayers();
+    const nightActors = alive.filter(p =>
+       ['Werewolf', 'Seer', 'Doctor'].includes(p.role) ||
+       (p.role === 'Cupid' && this.lovers.length < 2)
+    );
+    const nightProgress = { done: nightActors.filter(p => p.hasActed).length, total: nightActors.length };
+    const voteProgress = { done: alive.filter(p => p.hasVoted).length, total: alive.length };
+
     return {
        roomCode: this.roomCode,
        phase: this.phase,
@@ -428,6 +474,10 @@ class GameRoom {
        messages: safeMessages,
        pendingHunter: this.pendingHunter,
        lovers: this.lovers,
+       dayNumber: this.dayNumber,
+       gameLog: this.gameLog,
+       nightProgress,
+       voteProgress,
        witchPotions: this.getPlayer(playerId)?.role === 'Witch' ? this.witchPotions : null,
        pendingWitchKill: this.getPlayer(playerId)?.role === 'Witch' ? this.pendingWitchKill : null
     };

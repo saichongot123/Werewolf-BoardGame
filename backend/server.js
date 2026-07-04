@@ -19,7 +19,8 @@ const io = new Server(server, {
 // In-memory store for game rooms
 const rooms = new Map(); // roomCode -> GameRoom instance
 const roomTimers = {};
-  
+const roomTimeLeft = {}; // roomCode -> current seconds remaining (for reconnect sync)
+
 function startRoomTimer(roomCode, io) {
   const room = rooms.get(roomCode);
   if (!room) return;
@@ -31,11 +32,13 @@ function startRoomTimer(roomCode, io) {
   // Base time is based on settings. But NIGHT_WITCH might be shorter?
   // Let's use the normal timer for simplicity, or 30 seconds for Witch.
   let timeLeft = room.phase === 'NIGHT_WITCH' ? 30 : room.settings.timer;
-  
+  roomTimeLeft[roomCode] = timeLeft;
+
   io.to(roomCode).emit('timer_update', timeLeft);
 
   roomTimers[roomCode] = setInterval(() => {
     timeLeft--;
+    roomTimeLeft[roomCode] = timeLeft;
     io.to(roomCode).emit('timer_update', timeLeft);
 
     if (timeLeft <= 0) {
@@ -63,6 +66,7 @@ function startRoomTimer(roomCode, io) {
 function stopRoomTimer(roomCode, io) {
   clearInterval(roomTimers[roomCode]);
   delete roomTimers[roomCode];
+  delete roomTimeLeft[roomCode];
   io.to(roomCode).emit('timer_update', null);
 }
 
@@ -87,9 +91,14 @@ function processPhaseTransition(room, io) {
   } else if (room.phase === 'DAY') {
      const winner = room.checkWinCondition();
      if (winner) {
+        room.logNightSummary();
         room.setPhase('END_GAME');
         room.winner = winner;
      } else {
+        room.logNightSummary();
+        // Broadcast who died during the night
+        io.to(room.roomCode).emit('night_result', room.lastNightKilled || []);
+        
         // Start discussion, then voting
         setTimeout(() => {
            if (room.phase === 'DAY') {
@@ -110,7 +119,10 @@ io.on('connection', (socket) => {
 
   // 1. Create Room
   socket.on('create_room', (playerName, callback) => {
-    const roomCode = generateRoomCode();
+    let roomCode = generateRoomCode();
+    while (rooms.has(roomCode)) {
+      roomCode = generateRoomCode(); // avoid overwriting an existing room
+    }
     const newRoom = new GameRoom(roomCode);
     
     const playerId = crypto.randomUUID();
@@ -150,7 +162,11 @@ io.on('connection', (socket) => {
     if (room.phase !== 'LOBBY') {
       return callback({ success: false, message: 'Game has already started' });
     }
-    
+
+    if (room.players.length >= 10) {
+      return callback({ success: false, message: 'Room is full (max 10 players)' });
+    }
+
     if (room.players.some(p => p.name === playerName)) {
       return callback({ success: false, message: 'Name already taken in this room' });
     }
@@ -190,8 +206,12 @@ io.on('connection', (socket) => {
 
     player.socketId = socket.id;
     socket.join(code);
-    
+
     callback({ success: true, playerId: playerId, gameState: room.getState(playerId) });
+    // Sync the running countdown so a refreshed client sees the timer immediately
+    if (roomTimeLeft[code] != null) {
+      socket.emit('timer_update', roomTimeLeft[code]);
+    }
     broadcastGameState(room, io);
   });
 
@@ -214,6 +234,23 @@ io.on('connection', (socket) => {
       } else {
         socket.emit('error_msg', 'Not enough players (Minimum 4 required).');
       }
+    }
+  });
+
+  // 3.5 Start Voting (host opens the vote early, before the discussion timer runs out)
+  socket.on('start_voting', (roomCode) => {
+    const room = rooms.get(roomCode);
+    if (room && room.getHost()?.socketId === socket.id && room.phase === 'DAY') {
+      const winner = room.checkWinCondition();
+      if (winner) {
+        room.setPhase('END_GAME');
+        room.winner = winner;
+        broadcastGameState(room, io);
+        return;
+      }
+      room.setPhase('VOTING');
+      broadcastGameState(room, io);
+      startRoomTimer(roomCode, io);
     }
   });
 
@@ -244,7 +281,7 @@ io.on('connection', (socket) => {
   socket.on('witch_action', ({ roomCode, action }) => {
     const room = rooms.get(roomCode);
     if (room && room.phase === 'NIGHT_WITCH') {
-      const player = room.getPlayer(socket.playerId);
+      const player = room.players.find(p => p.socketId === socket.id);
       if (player && player.isAlive && player.role === 'Witch') {
         const success = room.handleNightWitchAction(player, action);
         if (success) {
@@ -352,6 +389,28 @@ io.on('connection', (socket) => {
           io.to(target.socketId).emit('kicked');
           broadcastGameState(room, io);
        }
+    }
+  });
+
+  // 10.5 Leave Room (voluntary exit back to the home screen)
+  socket.on('leave_room', (roomCode) => {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    const player = room.players.find(p => p.socketId === socket.id);
+    if (!player) return;
+
+    const wasHost = player.isHost;
+    room.removePlayer(player.id);
+    socket.leave(roomCode);
+
+    if (room.players.length === 0) {
+      stopRoomTimer(roomCode, io);
+      rooms.delete(roomCode);
+    } else {
+      if (wasHost) {
+        room.players[0].isHost = true;
+      }
+      broadcastGameState(room, io);
     }
   });
 

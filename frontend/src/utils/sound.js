@@ -35,6 +35,29 @@ export const playNightSound = () => {
   }
 };
 
+export const playAlertSound = () => {
+  try {
+    initAudio();
+    // Two quick rising blips to signal "it's your turn"
+    [660, 880].forEach((f, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      const start = audioCtx.currentTime + i * 0.15;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.25, start + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.01, start + 0.25);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(start);
+      osc.stop(start + 0.3);
+    });
+  } catch (e) {
+    console.error('Audio play failed', e);
+  }
+};
+
 export const playDaySound = () => {
   try {
     initAudio();
