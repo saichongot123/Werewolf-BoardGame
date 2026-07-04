@@ -51,6 +51,9 @@ function startRoomTimer(roomCode, io) {
         processPhaseTransition(room, io);
       } else if (room.phase === 'VOTING') {
         room.resolveVoting();
+        if (room.phase !== 'HUNTER_REVENGE' && room.phase !== 'END_GAME') {
+            room.setPhase('NIGHT');
+        }
         processPhaseTransition(room, io);
       }
     }
@@ -96,6 +99,8 @@ function processPhaseTransition(room, io) {
            }
         }, 15000); // 15 seconds discussion
      }
+  } else if (room.phase === 'NIGHT') {
+     startRoomTimer(room.roomCode, io);
   }
   broadcastGameState(room, io);
 }
@@ -277,6 +282,9 @@ io.on('connection', (socket) => {
       if (room.checkVotingEnd()) {
         stopRoomTimer(roomCode, io);
         room.resolveVoting();
+        if (room.phase !== 'HUNTER_REVENGE' && room.phase !== 'END_GAME') {
+            room.setPhase('NIGHT');
+        }
         processPhaseTransition(room, io);
       }
     }
