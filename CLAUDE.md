@@ -57,13 +57,24 @@ uses a 15s `setTimeout` before auto-advancing to `VOTING`. Keep these paths cons
 a change to how a phase resolves usually needs mirroring in both the "all acted" branch
 and the timer branch.
 
-**Night resolution ordering** (`resolveNight` → optional `NIGHT_WITCH` → `resolveNightWitch`):
-werewolf kill is majority-voted, Doctor save is checked, then if a live Witch exists the
-phase detours to `NIGHT_WITCH` carrying `pendingWitchKill` so the Witch can heal/poison
-before the death is applied. `killPlayer(id, deathPhase)` centralizes death side effects:
-Fool win-on-lynch, Hunter revenge (sets `HUNTER_REVENGE` + `pendingHunter`), and Lovers
-suicide (recursive via `this.lovers`). Route all deaths through `killPlayer` so these
-triggers fire.
+**The night is a sequential step queue**, not simultaneous. `beginNight()` builds
+`nightQueue` in fixed order (Cupid → Werewolf → Seer → Doctor → Witch, skipping roles that
+are absent/dead/irrelevant), then `startNightStep()` activates one role at a time via
+`currentNightRole`. Only that role's players may act (`handleNightAction` guards on
+`currentNightRole`); everyone else sees a "X is acting…" waiting screen. The server advances
+when `checkStepEnd()` is true (all of the current role's actors submitted) or the step timer
+expires (`advanceNightStep`). The Witch step is special: it precomputes the werewolf victim
+(after the Doctor save) into `pendingWitchKill` so the Witch sees who's about to die, and it
+runs under `phase === 'NIGHT_WITCH'` (rendered by `WitchPhase`). When the queue is exhausted,
+`finalizeNight()` assigns lovers, applies the werewolf kill (unless healed) and witch poison,
+then moves to `DAY`. `beginNight()` is the single entry point — call it (never bare
+`setPhase('NIGHT')`) from every night transition: after ROLE_VIEW, after voting, and when a
+Hunter's revenge returns to night. Server helpers `continueNight()` (run next step vs. finish)
+and `startNextNightOrEnd()` (win-check then begin next night) funnel this.
+
+`killPlayer(id, deathPhase)` centralizes death side effects: Fool win-on-lynch, Hunter
+revenge (sets `HUNTER_REVENGE` + `pendingHunter`), and Lovers suicide (recursive via
+`this.lovers`). Route all deaths through `killPlayer` so these triggers fire.
 
 **Optional roles** are toggled by host settings (`enableFool/Hunter/Witch/Cupid/LittleGirl`)
 and injected during `assignRoles()`. Werewolf count scales as `floor(numPlayers / 3)`,

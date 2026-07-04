@@ -29,9 +29,8 @@ function startRoomTimer(roomCode, io) {
     clearInterval(roomTimers[roomCode]);
   }
 
-  // Base time is based on settings. But NIGHT_WITCH might be shorter?
-  // Let's use the normal timer for simplicity, or 30 seconds for Witch.
-  let timeLeft = room.phase === 'NIGHT_WITCH' ? 30 : room.settings.timer;
+  // Every phase/step uses the room's configured timer length.
+  let timeLeft = room.settings.timer;
   roomTimeLeft[roomCode] = timeLeft;
 
   io.to(roomCode).emit('timer_update', timeLeft);
@@ -46,17 +45,17 @@ function startRoomTimer(roomCode, io) {
       delete roomTimers[roomCode];
 
       // Force transition if time is up
-      if (room.phase === 'NIGHT') {
-        room.resolveNight();
-        processPhaseTransition(room, io);
-      } else if (room.phase === 'NIGHT_WITCH') {
-        room.resolveNightWitch();
-        processPhaseTransition(room, io);
+      if (room.phase === 'NIGHT' || room.phase === 'NIGHT_WITCH') {
+        // Current role ran out of time — skip to the next night step
+        room.advanceNightStep();
+        continueNight(room, io);
       } else if (room.phase === 'VOTING') {
         room.resolveVoting();
-        if (room.phase !== 'HUNTER_REVENGE' && room.phase !== 'END_GAME') {
-            room.setPhase('NIGHT');
-        }
+        startNextNightOrEnd(room);
+        processPhaseTransition(room, io);
+      } else if (room.phase === 'HUNTER_REVENGE') {
+        // Hunter didn't shoot in time — skip their revenge
+        room.handleHunterAction(null);
         processPhaseTransition(room, io);
       }
     }
@@ -81,6 +80,29 @@ function broadcastGameState(room, io) {
     }
   });
 }
+// After a night step completes: if more steps remain, run the next one;
+// otherwise the night is over and we fall through to the day transition.
+function continueNight(room, io) {
+  if (room.phase === 'NIGHT' || room.phase === 'NIGHT_WITCH') {
+    broadcastGameState(room, io);
+    startRoomTimer(room.roomCode, io);
+  } else {
+    processPhaseTransition(room, io);
+  }
+}
+
+// Shared post-voting routing: end the game on a win, otherwise start the next night.
+function startNextNightOrEnd(room) {
+  if (room.phase === 'HUNTER_REVENGE') return; // hunter interrupt handles its own routing
+  const winner = room.checkWinCondition();
+  if (winner) {
+    room.setPhase('END_GAME');
+    room.winner = winner;
+  } else {
+    room.beginNight();
+  }
+}
+
 function processPhaseTransition(room, io) {
   if (room.phase === 'HUNTER_REVENGE') {
      // Hunter needs time to act, maybe start a timer?
@@ -223,12 +245,11 @@ io.on('connection', (socket) => {
       if (success) {
         broadcastGameState(room, io);
         
-        // After 5 seconds of role viewing, transition to night
+        // After 5 seconds of role viewing, begin the first night (queued steps)
         setTimeout(() => {
           if (room.phase === 'ROLE_VIEW') {
-             room.setPhase('NIGHT');
-             broadcastGameState(room, io);
-             startRoomTimer(roomCode, io);
+             room.beginNight();
+             processPhaseTransition(room, io);
           }
         }, 5000);
       } else {
@@ -262,31 +283,35 @@ io.on('connection', (socket) => {
       if (!player || !player.isAlive) return;
 
       const result = room.handleNightAction(player, targetId);
-      
+
       if (player.role === 'Seer' && result) {
         socket.emit('seer_result', result);
       }
-      
-      broadcastGameState(room, io);
 
-      if (room.checkNightEnd()) {
+      // Advance to the next role's step once everyone in this step has acted
+      if (room.checkStepEnd()) {
         stopRoomTimer(roomCode, io);
-        room.resolveNight();
-        processPhaseTransition(room, io);
+        room.advanceNightStep();
+        continueNight(room, io);
+      } else {
+        broadcastGameState(room, io);
       }
     }
   });
 
-  // Night Action (Witch)
+  // Night Action (Witch) — the witch is just the last night step
   socket.on('witch_action', ({ roomCode, action }) => {
     const room = rooms.get(roomCode);
     if (room && room.phase === 'NIGHT_WITCH') {
       const player = room.players.find(p => p.socketId === socket.id);
       if (player && player.isAlive && player.role === 'Witch') {
         const success = room.handleNightWitchAction(player, action);
-        if (success) {
+        if (success && room.checkStepEnd()) {
           stopRoomTimer(roomCode, io);
-          processPhaseTransition(room, io);
+          room.advanceNightStep();
+          continueNight(room, io);
+        } else {
+          broadcastGameState(room, io);
         }
       }
     }
@@ -314,15 +339,14 @@ io.on('connection', (socket) => {
       if (!player || !player.isAlive) return;
 
       room.handleVote(player.id, targetId);
-      broadcastGameState(room, io);
 
       if (room.checkVotingEnd()) {
         stopRoomTimer(roomCode, io);
         room.resolveVoting();
-        if (room.phase !== 'HUNTER_REVENGE' && room.phase !== 'END_GAME') {
-            room.setPhase('NIGHT');
-        }
+        startNextNightOrEnd(room);
         processPhaseTransition(room, io);
+      } else {
+        broadcastGameState(room, io);
       }
     }
   });

@@ -24,6 +24,11 @@ class GameRoom {
     this.dayNumber = 0; // Increments each night; drives the "Night N / Day N" HUD
     this.gameLog = []; // Public event history [{ id, text }] — no hidden role info
     this.lastVoteBreakdown = null; // Who voted whom in the most recent vote
+    // Sequential night: roles act one at a time in a fixed order
+    this.nightQueue = []; // ordered role steps for the current night
+    this.nightStepIndex = 0;
+    this.currentNightRole = null; // the role acting right now (public, for atmosphere)
+    this.nightWerewolfVictim = undefined; // precomputed for the witch step
   }
 
   addMessage(msg) {
@@ -83,6 +88,9 @@ class GameRoom {
     this.dayNumber = 0;
     this.gameLog = [];
     this.lastVoteBreakdown = null;
+    this.nightQueue = [];
+    this.nightStepIndex = 0;
+    this.currentNightRole = null;
     return true;
   }
 
@@ -180,6 +188,8 @@ class GameRoom {
   }
 
   handleNightAction(player, targetId) {
+    // Only the role whose step is active may act
+    if (player.role !== this.currentNightRole) return null;
     if (player.role === 'Werewolf') {
       this.nightActions.werewolf.push(targetId);
       player.hasActed = true;
@@ -200,122 +210,129 @@ class GameRoom {
     return null; // Return null for non-seer
   }
 
-  checkNightEnd() {
-    const alivePlayers = this.getAlivePlayers();
-    
-    const werewolves = alivePlayers.filter(p => p.role === 'Werewolf');
-    const allWerewolvesActed = werewolves.every(p => p.hasActed);
-    
-    const seer = alivePlayers.find(p => p.role === 'Seer');
-    const seerActed = !seer || seer.hasActed;
-
-    const doctor = alivePlayers.find(p => p.role === 'Doctor');
-    const doctorActed = !doctor || doctor.hasActed;
-
-    const cupid = alivePlayers.find(p => p.role === 'Cupid');
-    const cupidActedState = !cupid || this.cupidActed || cupid.hasActed;
-
-    return allWerewolvesActed && seerActed && doctorActed && cupidActedState;
+  // ---- Sequential night engine ----
+  // Roles act one at a time in this order. Only present & relevant roles are queued.
+  buildNightQueue() {
+    const alive = this.getAlivePlayers();
+    const present = (role) => alive.some(p => p.role === role);
+    const queue = [];
+    if (present('Cupid') && this.lovers.length < 2) queue.push('Cupid');
+    if (present('Werewolf')) queue.push('Werewolf');
+    if (present('Seer')) queue.push('Seer');
+    if (present('Doctor')) queue.push('Doctor');
+    if (present('Witch') && (this.witchPotions.heal || this.witchPotions.poison)) queue.push('Witch');
+    return queue;
   }
 
-  resolveNight() {
-    // Determine who werewolves killed (most voted)
-    let killedId = null;
-    if (this.nightActions.werewolf.length > 0) {
-       // Simple logic: first werewolf's target or majority
-       // For simplicity in a basic app, if multiple werewolves, they might send different targets.
-       // We'll take the most frequent target.
-       const counts = {};
-       let maxCount = 0;
-       this.nightActions.werewolf.forEach(id => {
-           counts[id] = (counts[id] || 0) + 1;
-           if (counts[id] > maxCount) {
-               maxCount = counts[id];
-               killedId = id;
-           }
-       });
-    }
+  beginNight() {
+    this.setPhase('NIGHT'); // increments dayNumber, resets nightActions + hasActed
+    this.nightWerewolfVictim = undefined;
+    this.pendingWitchKill = null;
+    this.nightQueue = this.buildNightQueue();
+    this.nightStepIndex = 0;
+    this.startNightStep();
+  }
 
-    // Handle Cupid Lovers
-    if (this.nightActions.cupid && this.nightActions.cupid.length === 2) {
-       this.lovers = this.nightActions.cupid;
-       this.cupidActed = true;
-       // We should notify them in the chat privately, but for simplicity they will see their lover icon in UI
+  startNightStep() {
+    // No more steps → apply the night's results and move to day
+    if (this.nightStepIndex >= this.nightQueue.length) {
+      this.finalizeNight();
+      return;
     }
+    const role = this.nightQueue[this.nightStepIndex];
+    this.currentNightRole = role;
+    // Reset the acting flag only for this role's players
+    this.players.forEach(p => { if (p.role === role) p.hasActed = false; });
 
-    this.lastNightKilled = [];
-    // Check doctor save
-    let finalKilledId = null;
-    if (killedId && this.nightActions.doctor !== killedId) {
-        finalKilledId = killedId; // This person will die unless witch saves them
-    }
-
-    // Check if witch should act
-    const witch = this.getAlivePlayers().find(p => p.role === 'Witch');
-    if (witch && this.phase !== 'HUNTER_REVENGE' && (this.witchPotions.heal || this.witchPotions.poison)) {
-        this.setPhase('NIGHT_WITCH');
-        // Store the pending kill so witch can see it
-        this.pendingWitchKill = finalKilledId;
-        this.nightActions.witchHeal = false;
-        this.nightActions.witchPoison = null;
-        witch.hasActed = false;
+    if (role === 'Witch') {
+      // The witch must see who the werewolves are about to kill (after the doctor's save)
+      this.nightWerewolfVictim = this.computeWerewolfVictim();
+      this.pendingWitchKill = this.nightWerewolfVictim;
+      this.nightActions.witchHeal = false;
+      this.nightActions.witchPoison = null;
+      this.phase = 'NIGHT_WITCH';
     } else {
-        if (finalKilledId) {
-           this.killPlayer(finalKilledId, 'NIGHT');
-        }
-        // Only set to DAY if hunter isn't taking revenge
-        if (this.phase !== 'HUNTER_REVENGE') {
-           this.setPhase('DAY');
-        }
+      this.phase = 'NIGHT';
     }
+  }
+
+  checkStepEnd() {
+    const actors = this.getAlivePlayers().filter(p => p.role === this.currentNightRole);
+    return actors.length > 0 && actors.every(p => p.hasActed);
+  }
+
+  advanceNightStep() {
+    this.nightStepIndex += 1;
+    this.startNightStep();
+  }
+
+  computeWerewolfVictim() {
+    const counts = {};
+    let victim = null;
+    let max = 0;
+    this.nightActions.werewolf.forEach(id => {
+      counts[id] = (counts[id] || 0) + 1;
+      if (counts[id] > max) { max = counts[id]; victim = id; }
+    });
+    if (victim && this.nightActions.doctor === victim) victim = null; // doctor save
+    return victim;
   }
 
   handleNightWitchAction(player, action) {
-      if (player.role !== 'Witch' || this.phase !== 'NIGHT_WITCH') return false;
-      
-      if (action.heal && this.witchPotions.heal) {
-          this.nightActions.witchHeal = true;
-          this.witchPotions.heal = false;
-      }
-      if (action.poison && this.witchPotions.poison) {
-          this.nightActions.witchPoison = action.poison; // targetId
-          this.witchPotions.poison = false;
-      }
-      player.hasActed = true;
-      
-      // Resolve immediately after witch acts
-      this.resolveNightWitch();
-      return true;
+    if (player.role !== 'Witch' || this.phase !== 'NIGHT_WITCH') return false;
+    if (action.heal && this.witchPotions.heal) {
+      this.nightActions.witchHeal = true;
+      this.witchPotions.heal = false;
+    }
+    if (action.poison && this.witchPotions.poison) {
+      this.nightActions.witchPoison = action.poison; // targetId
+      this.witchPotions.poison = false;
+    }
+    player.hasActed = true;
+    return true; // advancing is driven by the server via checkStepEnd
   }
 
-  resolveNightWitch() {
-      // Handle the pending kill from werewolves
-      if (this.pendingWitchKill && !this.nightActions.witchHeal) {
-          this.killPlayer(this.pendingWitchKill, 'NIGHT');
-      }
+  finalizeNight() {
+    this.currentNightRole = null;
 
-      // Handle witch poison
-      if (this.nightActions.witchPoison) {
-          this.killPlayer(this.nightActions.witchPoison, 'NIGHT');
-      }
+    // Assign lovers first, so a same-night death triggers the partner's suicide
+    if (this.nightActions.cupid && this.nightActions.cupid.length === 2) {
+      this.lovers = this.nightActions.cupid;
+      this.cupidActed = true;
+    }
 
-      this.pendingWitchKill = null;
+    // Werewolf victim: reuse the value computed for the witch step, else compute now
+    let victim = this.nightWerewolfVictim !== undefined ? this.nightWerewolfVictim : this.computeWerewolfVictim();
+    if (this.nightActions.witchHeal) victim = null; // witch's heal cancels the kill
 
-      if (this.phase !== 'HUNTER_REVENGE') {
-          this.setPhase('DAY');
-      }
+    this.lastNightKilled = [];
+    if (victim) this.killPlayer(victim, 'NIGHT');
+    if (this.nightActions.witchPoison) this.killPlayer(this.nightActions.witchPoison, 'NIGHT');
+
+    this.pendingWitchKill = null;
+    this.nightWerewolfVictim = undefined;
+
+    if (this.phase !== 'HUNTER_REVENGE') {
+      this.setPhase('DAY');
+    }
   }
 
   handleHunterAction(targetId) {
     if (this.phase !== 'HUNTER_REVENGE' || !this.pendingHunter) return false;
-    
+
     if (targetId) {
         this.killPlayer(targetId, 'HUNTER_REVENGE');
     }
-    
-    this.setPhase(this.hunterTargetPhase || 'DAY');
+
+    const next = this.hunterTargetPhase || 'DAY';
     this.pendingHunter = null;
     this.hunterTargetPhase = null;
+    // Returning to night must rebuild the step queue, not just flip the phase
+    if (next === 'NIGHT') {
+      this.beginNight();
+    } else {
+      this.setPhase(next);
+    }
     return true;
   }
 
@@ -395,6 +412,9 @@ class GameRoom {
       this.dayNumber = 0;
       this.gameLog = [];
       this.lastVoteBreakdown = null;
+      this.nightQueue = [];
+      this.nightStepIndex = 0;
+      this.currentNightRole = null;
       this.lovers = [];
       this.cupidActed = false;
       this.witchPotions = { heal: true, poison: true };
@@ -458,11 +478,10 @@ class GameRoom {
 
     // Aggregate progress counters — numbers only, so they never leak who holds a role.
     const alive = this.getAlivePlayers();
-    const nightActors = alive.filter(p =>
-       ['Werewolf', 'Seer', 'Doctor'].includes(p.role) ||
-       (p.role === 'Cupid' && this.lovers.length < 2)
-    );
-    const nightProgress = { done: nightActors.filter(p => p.hasActed).length, total: nightActors.length };
+    const stepActors = this.currentNightRole
+       ? alive.filter(p => p.role === this.currentNightRole)
+       : [];
+    const nightProgress = { done: stepActors.filter(p => p.hasActed).length, total: stepActors.length };
     const voteProgress = { done: alive.filter(p => p.hasVoted).length, total: alive.length };
 
     return {
@@ -476,6 +495,7 @@ class GameRoom {
        lovers: this.lovers,
        dayNumber: this.dayNumber,
        gameLog: this.gameLog,
+       currentNightRole: this.currentNightRole,
        nightProgress,
        voteProgress,
        witchPotions: this.getPlayer(playerId)?.role === 'Witch' ? this.witchPotions : null,

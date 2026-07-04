@@ -15,6 +15,9 @@ import GameLog from './components/GameLog';
 import { getRole } from './utils/roles';
 import { playNightSound, playDaySound, playAlertSound } from './utils/sound';
 
+const NIGHT_ROLE_ICON = { Werewolf: '🐺', Seer: '🔮', Doctor: '💉', Cupid: '💘', Witch: '🧙' };
+const NIGHT_ROLE_TH = { Werewolf: 'หมาป่า', Seer: 'ผู้หยั่งรู้', Doctor: 'หมอ', Cupid: 'คิวปิด', Witch: 'แม่มด' };
+
 // Phase → HUD label. dayNumber is filled in at render time.
 const PHASE_LABELS = {
   ROLE_VIEW: { icon: '🎭', text: 'ดูบทบาท' },
@@ -33,9 +36,8 @@ function needsMyAction(gs, me) {
   if (!me.isAlive) return false;
   switch (gs.phase) {
     case 'NIGHT':
-      if (['Werewolf', 'Seer', 'Doctor'].includes(me.role)) return !me.hasActed;
-      if (me.role === 'Cupid') return gs.lovers?.length !== 2 && !me.hasActed;
-      return false;
+      // Only when it's this role's step in the sequence
+      return me.role === gs.currentNightRole && !me.hasActed;
     case 'NIGHT_WITCH':
       return me.role === 'Witch' && !me.hasActed;
     case 'VOTING':
@@ -405,7 +407,7 @@ function App() {
       )}
 
       {systemMessage && (
-        <div style={{ position: 'absolute', top: 30, left: 20, right: 20, background: 'rgba(69, 162, 158, 0.9)', color: '#fff', padding: 15, borderRadius: 8, textAlign: 'center', zIndex: 100 }}>
+        <div style={{ position: 'fixed', top: 110, left: 20, right: 20, background: 'rgba(69, 162, 158, 0.9)', color: '#fff', padding: 15, borderRadius: 8, textAlign: 'center', zIndex: 100 }}>
           {systemMessage}
         </div>
       )}
@@ -430,11 +432,11 @@ function App() {
            
            {gameState.lovers && gameState.lovers.includes(currentPlayer.id) && (
               <div style={{
-                  position: 'fixed', bottom: '20px', left: '20px',
+                  position: 'fixed', bottom: '84px', left: '50%', transform: 'translateX(-50%)',
                   backgroundColor: 'rgba(244, 114, 182, 0.9)', padding: '10px 20px',
                   borderRadius: '30px', boxShadow: '0 4px 15px rgba(244, 114, 182, 0.4)',
                   zIndex: 1000, display: 'flex', alignItems: 'center', gap: '10px',
-                  border: '1px solid rgba(255, 255, 255, 0.2)'
+                  border: '1px solid rgba(255, 255, 255, 0.2)', whiteSpace: 'nowrap'
               }}>
                  <span style={{ fontSize: '1.5rem' }}>💘</span>
                  <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -465,15 +467,16 @@ function App() {
 
       {/* HUD: current phase / day + action progress + your-turn alert */}
       {inGame && phaseLabel && (
-        <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 85, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', pointerEvents: 'none' }}>
+        <div style={{ position: 'fixed', top: 44, left: '50%', transform: 'translateX(-50%)', zIndex: 85, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', pointerEvents: 'none', maxWidth: 'calc(100vw - 220px)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0,0,0,0.6)', padding: '6px 14px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.12)', backdropFilter: 'blur(5px)', fontSize: '0.9rem', fontWeight: 'bold', color: '#fff' }}>
             <span style={{ fontSize: '1.1rem' }}>{phaseLabel.icon}</span>
             <span>{phaseLabel.text}{showsDay ? ` ${dayNumber}` : ''}</span>
           </div>
 
-          {gameState.phase === 'NIGHT' && nightProgress && (
+          {gameState.phase === 'NIGHT' && gameState.currentNightRole && (
             <div style={{ fontSize: '0.75rem', color: '#ccc', background: 'rgba(0,0,0,0.5)', padding: '3px 10px', borderRadius: '12px' }}>
-              ทำแอคชั่นแล้ว {nightProgress.done}/{nightProgress.total}
+              {NIGHT_ROLE_ICON[gameState.currentNightRole] || '🌙'} {NIGHT_ROLE_TH[gameState.currentNightRole] || ''}กำลังทำหน้าที่
+              {nightProgress && nightProgress.total > 1 ? ` (${nightProgress.done}/${nightProgress.total})` : ''}
             </div>
           )}
           {gameState.phase === 'VOTING' && voteProgress && (
@@ -513,7 +516,10 @@ function App() {
         </div>
       )}
 
-      {renderPhase()}
+      {/* Pad the content clear of the fixed top HUD and bottom toolbar during play */}
+      <div style={inGame ? { paddingTop: '100px', paddingBottom: '84px' } : undefined}>
+        {renderPhase()}
+      </div>
 
       <ChatBox
         gameState={gameState}
