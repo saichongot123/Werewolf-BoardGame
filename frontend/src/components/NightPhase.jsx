@@ -24,7 +24,19 @@ function NightPhase({ gameState, currentPlayer, onAction, seerResult }) {
   const icon = ROLE_ICON[currentRole] || '🌙';
   const isMyTurn = currentPlayer.role === currentRole;
 
-  // Someone else's step — wait, but see who is currently acting
+  // The Seer's result must stay visible for the rest of the night — the step
+  // advances the instant they confirm, so it can't only live on the action screen.
+  const seerCard = currentPlayer.role === 'Seer' && seerResult ? (
+    <div style={{ marginTop: '1.5rem', padding: '1rem', border: '1px solid var(--accent-color)', borderRadius: '8px' }}>
+      <h3 style={{ color: 'var(--text-highlight)' }}>🔮 ผลการตรวจสอบ</h3>
+      <p>
+        <strong>{gameState.players.find(p => p.id === seerResult.targetId)?.name || 'ผู้เล่น'}</strong> คือ{' '}
+        <strong style={{ color: seerResult.role === 'Werewolf' ? '#ff4b4b' : '#86efac' }}>{getRole(seerResult.role).th}</strong>
+      </p>
+    </div>
+  ) : null;
+
+  // Someone else's step — wait, but see who is currently acting (and keep the Seer's result)
   if (!isMyTurn) {
     return (
       <div className="glass-panel" style={{ textAlign: 'center' }}>
@@ -36,6 +48,7 @@ function NightPhase({ gameState, currentPlayer, onAction, seerResult }) {
           </p>
           <p style={{ fontSize: '0.9rem', color: '#888' }}>โปรดรอสักครู่ ให้แต่ละบทบาททำหน้าที่ตามลำดับ</p>
         </div>
+        {seerCard}
       </div>
     );
   }
@@ -46,12 +59,7 @@ function NightPhase({ gameState, currentPlayer, onAction, seerResult }) {
       <div className="glass-panel" style={{ textAlign: 'center' }}>
         <h1 style={{ color: '#45a29e' }}>ยืนยันการกระทำแล้ว</h1>
         <p>กำลังรอบทบาทถัดไปทำหน้าที่...</p>
-        {seerResult && (
-          <div style={{ marginTop: '2rem', padding: '1rem', border: '1px solid var(--accent-color)', borderRadius: '8px' }}>
-            <h3 style={{ color: 'var(--text-highlight)' }}>ผลการตรวจสอบ</h3>
-            <p>ผู้เล่นคนนี้คือ <strong style={{ color: seerResult.role === 'Werewolf' ? '#ff4b4b' : '#86efac' }}>{getRole(seerResult.role).th}</strong></p>
-          </div>
-        )}
+        {seerCard}
       </div>
     );
   }

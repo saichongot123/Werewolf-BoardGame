@@ -91,6 +91,10 @@ class GameRoom {
     this.nightQueue = [];
     this.nightStepIndex = 0;
     this.currentNightRole = null;
+    this.pendingHunter = null;
+    this.hunterTargetPhase = null;
+    this.pendingWitchKill = null;
+    this.nightWerewolfVictim = undefined;
     return true;
   }
 
@@ -476,12 +480,17 @@ class GameRoom {
         return m;
     });
 
-    // Aggregate progress counters — numbers only, so they never leak who holds a role.
+    // Progress counters. voteProgress uses the (public) alive count, so it is safe for all.
+    // nightProgress.total = number of players in the acting role — that would leak e.g. the
+    // werewolf count, so it is only sent to players who ARE that role (they already know it).
+    const requester = this.getPlayer(playerId);
     const alive = this.getAlivePlayers();
-    const stepActors = this.currentNightRole
-       ? alive.filter(p => p.role === this.currentNightRole)
-       : [];
-    const nightProgress = { done: stepActors.filter(p => p.hasActed).length, total: stepActors.length };
+    const isStepActor = this.currentNightRole && requester && requester.role === this.currentNightRole;
+    let nightProgress = null;
+    if (isStepActor) {
+       const stepActors = alive.filter(p => p.role === this.currentNightRole);
+       nightProgress = { done: stepActors.filter(p => p.hasActed).length, total: stepActors.length };
+    }
     const voteProgress = { done: alive.filter(p => p.hasVoted).length, total: alive.length };
 
     return {

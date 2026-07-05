@@ -146,6 +146,7 @@ function App() {
     if (gameState?.phase && previousPhaseRef.current !== gameState.phase) {
       if (gameState.phase === 'NIGHT') {
          playNightSound();
+         setSeerResult(null); // clear last night's check so a new night starts fresh
       } else if (gameState.phase === 'DAY') {
          playDaySound();
       }

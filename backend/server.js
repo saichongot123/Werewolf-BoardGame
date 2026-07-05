@@ -104,6 +104,11 @@ function startNextNightOrEnd(room) {
 }
 
 function processPhaseTransition(room, io) {
+  // DAY (discussion) and END_GAME have no countdown — clear any leftover timer bar,
+  // including the case where a night step or the vote expired straight into them.
+  if (room.phase === 'DAY' || room.phase === 'END_GAME') {
+    stopRoomTimer(room.roomCode, io);
+  }
   if (room.phase === 'HUNTER_REVENGE') {
      // Hunter needs time to act, maybe start a timer?
      startRoomTimer(room.roomCode, io);
