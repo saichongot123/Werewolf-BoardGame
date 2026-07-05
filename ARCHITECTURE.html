@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Werewolf App — คู่มือสถาปัตยกรรมโค้ด (ละเอียด)</title>
+<style>
+  :root {
+    --bg:#0b0c10; --bg2:#101219; --panel:#161a23; --panel2:#1e2330; --panel3:#252b3a;
+    --border:#2c3444; --text:#d6d8e0; --muted:#8b93a7; --faint:#666e83;
+    --teal:#66fcf1; --teal2:#45a29e; --red:#ff6b6b; --yellow:#fcd34d;
+    --green:#6ee7a8; --purple:#c4a3ff; --pink:#f472b6; --blue:#7cb8ff; --orange:#ffb26b;
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#eef1f6; --bg2:#e6ebf3; --panel:#fff; --panel2:#f3f5fa; --panel3:#e9edf5;
+      --border:#d3dae6; --text:#23283a; --muted:#5c6784; --faint:#8791a8;
+      --teal:#0c9a90; --teal2:#12857c; --red:#d93a3a; }
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg); color:var(--text); line-height:1.65; padding:0 1rem 6rem;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Sarabun","Noto Sans Thai",Roboto,sans-serif}
+  .wrap{max-width:1000px; margin:0 auto}
+  a{color:var(--teal)}
+
+  header.hero{text-align:center; padding:3rem 1rem 2rem; margin-bottom:1rem;
+    background:radial-gradient(circle at 50% -10%,rgba(102,252,241,.12),transparent 55%)}
+  header.hero h1{font-size:clamp(1.6rem,4vw,2.5rem); letter-spacing:.5px}
+  header.hero .sub{color:var(--muted); margin-top:.6rem}
+  .tags{margin-top:1rem; display:flex; gap:.4rem; justify-content:center; flex-wrap:wrap}
+  .tag{font-size:.72rem; color:var(--teal2); border:1px solid var(--teal2); border-radius:20px; padding:2px 12px}
+
+  /* TOC */
+  nav.toc{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:1rem 1.3rem; margin:1.5rem 0 2.5rem}
+  nav.toc h4{font-size:.8rem; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:.6rem}
+  nav.toc ol{columns:2; column-gap:2rem; list-style:none; counter-reset:toc; font-size:.9rem}
+  nav.toc li{counter-increment:toc; padding:.18rem 0; break-inside:avoid}
+  nav.toc li::before{content:counter(toc) ". "; color:var(--teal2); font-weight:700}
+  @media(max-width:640px){nav.toc ol{columns:1}}
+
+  section{margin:3rem 0; scroll-margin-top:1rem}
+  h2{font-size:1.5rem; margin-bottom:.4rem; display:flex; align-items:center; gap:.6rem}
+  h2 .n{font-size:.85rem; color:var(--bg); background:var(--teal2); width:1.9rem; height:1.9rem;
+     border-radius:8px; display:flex; align-items:center; justify-content:center; font-weight:800; flex-shrink:0}
+  .sec-sub{color:var(--muted); margin-bottom:1.2rem; border-bottom:1px solid var(--border); padding-bottom:1rem}
+  h3{font-size:1.08rem; color:var(--teal); margin:1.6rem 0 .7rem}
+  h4{font-size:.95rem; margin:1rem 0 .5rem}
+  p{margin-bottom:.7rem}
+  ul,ol.norm{margin:.3rem 0 .9rem 1.3rem}
+  li{margin-bottom:.25rem}
+  .muted{color:var(--muted)} .faint{color:var(--faint)}
+  b,strong{color:var(--text)}
+  code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:.85em;
+    background:var(--panel2); padding:1px 6px; border-radius:5px; color:var(--teal)}
+
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:1.3rem 1.5rem; margin:1rem 0}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:1rem}
+  .grid3{display:grid; grid-template-columns:repeat(3,1fr); gap:.8rem}
+  @media(max-width:700px){.grid2,.grid3{grid-template-columns:1fr}}
+
+  .note{border-left:3px solid var(--teal2); background:var(--panel2); padding:.8rem 1.1rem;
+    border-radius:0 10px 10px 0; margin:1rem 0; font-size:.92rem}
+  .warn{border-left-color:var(--yellow)}
+  .danger{border-left-color:var(--red)}
+
+  /* code block */
+  pre{background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:1rem 1.1rem;
+    overflow-x:auto; font-family:ui-monospace,Menlo,monospace; font-size:.82rem; line-height:1.6; margin:.8rem 0}
+  pre .c{color:var(--faint)} pre .k{color:var(--pink)} pre .f{color:var(--blue)}
+  pre .s{color:var(--green)} pre .n{color:var(--orange)}
+  .file-tag{font-size:.72rem; color:var(--muted); font-family:ui-monospace,monospace; display:block; margin-bottom:.3rem}
+
+  /* flow boxes */
+  .flow{display:flex; flex-direction:column; gap:.45rem; margin:1rem 0}
+  .row{display:flex; align-items:center; gap:.55rem; flex-wrap:wrap}
+  .box{background:var(--panel2); border:1px solid var(--border); border-radius:9px; padding:.5rem .85rem; font-size:.88rem; font-weight:600}
+  .box small{display:block; font-weight:400; color:var(--muted); font-size:.75rem}
+  .box.teal{border-color:var(--teal2)} .box.red{border-color:var(--red)} .box.green{border-color:var(--green)}
+  .box.yellow{border-color:var(--yellow)} .box.purple{border-color:var(--purple)}
+  .arrow{color:var(--teal); font-weight:700; font-size:1.1rem}
+  .down{color:var(--teal); font-weight:700; padding-left:1.2rem; font-size:1rem}
+
+  /* sequence diagram */
+  .seq{border:1px solid var(--border); border-radius:12px; overflow:hidden; margin:1rem 0}
+  .seq-head{display:grid; grid-template-columns:1fr 1fr; background:var(--panel3); font-weight:700; font-size:.85rem; text-align:center}
+  .seq-head div{padding:.5rem}
+  .seq-head .cl{color:var(--teal)} .seq-head .sv{color:var(--red)}
+  .seq-step{display:grid; grid-template-columns:1fr 1fr; border-top:1px solid var(--border); font-size:.85rem}
+  .seq-step > div{padding:.6rem .8rem}
+  .seq-step .side{background:var(--panel)}
+  .seq-step .msg{grid-column:1/3; text-align:center; background:var(--bg2); color:var(--teal2); font-family:ui-monospace,monospace; font-size:.78rem; padding:.35rem}
+  .seq-step .msg.up::before{content:"⬆️ emit  "}
+  .seq-step .msg.down::before{content:"⬇️ push  "}
+  .seq-num{color:var(--faint); font-weight:700; margin-right:.3rem}
+
+  /* phase machine */
+  .phases{display:flex; flex-wrap:wrap; gap:.45rem; align-items:center; margin:.6rem 0}
+  .phase{border-radius:9px; padding:.45rem .75rem; font-size:.82rem; font-weight:700; background:var(--panel2); border:1px solid var(--border); white-space:nowrap}
+  .phase.night{border-color:#4a5aaa; color:var(--blue)}
+  .phase.day{border-color:var(--yellow); color:var(--yellow)}
+  .phase.vote{border-color:var(--red); color:var(--red)}
+  .phase.end{border-color:var(--teal2); color:var(--teal)}
+
+  /* tables */
+  .scroll{overflow-x:auto; margin:.6rem 0}
+  table{width:100%; border-collapse:collapse; font-size:.86rem}
+  th,td{text-align:left; padding:.55rem .7rem; border-bottom:1px solid var(--border); vertical-align:top}
+  th{color:var(--teal); font-weight:600; white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  td code{white-space:nowrap}
+
+  /* role chips */
+  .roles{display:flex; flex-wrap:wrap; gap:.4rem; align-items:center; margin:.7rem 0}
+  .chip{font-size:.8rem; padding:3px 11px; border-radius:20px; border:1px solid; font-weight:700}
+  .c-ww{color:var(--red); border-color:var(--red)} .c-seer{color:var(--purple); border-color:var(--purple)}
+  .c-doc{color:var(--green); border-color:var(--green)} .c-witch{color:#4ade80; border-color:#4ade80}
+  .c-cupid{color:var(--pink); border-color:var(--pink)} .c-vil{color:var(--teal); border-color:var(--teal2)}
+
+  /* numbered steps */
+  ol.steps{counter-reset:s; list-style:none; margin:.5rem 0}
+  ol.steps>li{position:relative; padding:.6rem 0 .6rem 2.6rem; border-bottom:1px dashed var(--border)}
+  ol.steps>li:last-child{border-bottom:none}
+  ol.steps>li::before{counter-increment:s; content:counter(s); position:absolute; left:0; top:.55rem;
+    width:1.8rem; height:1.8rem; border-radius:50%; background:var(--teal2); color:#04140f;
+    font-weight:800; display:flex; align-items:center; justify-content:center; font-size:.8rem}
+
+  .kv{display:grid; grid-template-columns:auto 1fr; gap:.2rem 1rem; font-size:.88rem; margin:.5rem 0}
+  .kv code{justify-self:start}
+  footer{text-align:center; color:var(--muted); font-size:.82rem; margin-top:4rem; padding-top:2rem; border-top:1px solid var(--border)}
+  .pill{display:inline-block; font-size:.7rem; padding:1px 8px; border-radius:20px; border:1px solid var(--border); color:var(--muted); margin-left:.3rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>🐺 เกมมนุษย์หมาป่า — คู่มือสถาปัตยกรรมโค้ด</h1>
+  <p class="sub">อธิบายละเอียดว่าโค้ดทำงานยังไง · เริ่มจากไหน · ข้อมูลไหลไปไหน · แต่ละฟังก์ชันทำอะไร</p>
+  <div class="tags">
+    <span class="tag">React 19 (frontend)</span>
+    <span class="tag">Socket.IO (realtime)</span>
+    <span class="tag">Node + Express (backend)</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <h4>สารบัญ</h4>
+  <ol>
+    <li><a href="#big">ภาพรวม & หลักคิด</a></li>
+    <li><a href="#files">โครงไฟล์</a></li>
+    <li><a href="#data">โครงสร้างข้อมูล (GameRoom / Player / State)</a></li>
+    <li><a href="#backend">Backend: เริ่มทำงานยังไง</a></li>
+    <li><a href="#events">รายการ Socket Events ทั้งหมด</a></li>
+    <li><a href="#phases">Phase State Machine</a></li>
+    <li><a href="#night">เครื่องยนต์กลางคืน (ทีละบทบาท)</a></li>
+    <li><a href="#death">การตาย & ผลข้างเคียง</a></li>
+    <li><a href="#secrecy">ระบบความลับ (getState)</a></li>
+    <li><a href="#frontend">Frontend: เริ่มทำงานยังไง</a></li>
+    <li><a href="#roundtrip">ตัวอย่างเต็ม: 1 คืน 1 วัน</a></li>
+    <li><a href="#timers">ระบบจับเวลา</a></li>
+  </ol>
+</nav>
+
+<!-- ========== 1. BIG PICTURE ========== -->
+<section id="big">
+  <h2><span class="n">1</span> ภาพรวม &amp; หลักคิด</h2>
+  <p class="sec-sub">กฎเหล็กของทั้งระบบ: <b>Server เป็นเจ้าของความจริง (authoritative)</b> — client แค่วาดหน้าจอกับส่ง "ความตั้งใจ"</p>
+
+  <div class="card">
+    <div class="row" style="justify-content:center; gap:1.5rem">
+      <div class="box teal" style="text-align:center; min-width:150px">🖥️ Browser (React)<small>วาด UI · จับคลิก · emit event<br>เก็บแค่ "สำเนา" ของ state</small></div>
+      <div style="text-align:center; color:var(--teal)">⟷<br><small class="muted">WebSocket<br>2 ทาง</small></div>
+      <div class="box red" style="text-align:center; min-width:150px">⚙️ Node Server<small>เก็บ state จริงในหน่วยความจำ<br>ตัดสินทุกกฎ · เก็บความลับ</small></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>ทำไมต้องให้ server ตัดสินทุกอย่าง?</h4>
+      <ul>
+        <li><b>กันโกง</b> — ถ้า client รู้บทบาทคนอื่น จะเปิด DevTools โกงได้ทันที</li>
+        <li><b>ความลับ</b> — server ส่งข้อมูลให้แต่ละคน<b>ไม่เท่ากัน</b> (คุณเห็นแค่บทบาทตัวเอง)</li>
+        <li><b>ตัวกลางเดียว</b> — ทุกคนเห็นสถานะตรงกัน ไม่มีการคำนวณซ้ำที่ client</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>วงจรพื้นฐาน (ทำซ้ำตลอดเกม)</h4>
+      <div class="flow">
+        <div class="row"><span class="box">คลิก</span><span class="arrow">→</span><span class="box teal">emit event</span><span class="arrow">→</span><span class="box red">server คิด</span></div>
+        <div class="down">↓</div>
+        <div class="row"><span class="box red">เปลี่ยน state</span><span class="arrow">→</span><span class="box teal">push state ใหม่</span><span class="arrow">→</span><span class="box">React วาดใหม่</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 2. FILES ========== -->
+<section id="files">
+  <h2><span class="n">2</span> โครงไฟล์</h2>
+  <p class="sec-sub">2 โปรเจกต์แยกกัน รันคนละ process — <code>backend/</code> (พอร์ต 3001) กับ <code>frontend/</code> (Vite dev server)</p>
+  <div class="grid2">
+    <div class="card">
+      <span class="file-tag">backend/</span>
+      <div class="kv">
+        <code>server.js</code><span class="muted">ชั้นสื่อสาร Socket.IO + จับเวลา (transport)</span>
+        <code>gameLogic.js</code><span class="muted"><b>สมองเกม</b> — คลาส GameRoom ทั้งหมด</span>
+      </div>
+    </div>
+    <div class="card">
+      <span class="file-tag">frontend/src/</span>
+      <div class="kv">
+        <code>main.jsx</code><span class="muted">จุด mount React</span>
+        <code>App.jsx</code><span class="muted">ศูนย์กลาง: socket, state, สลับหน้าจอ</span>
+        <code>components/</code><span class="muted">หน้าจอแต่ละ phase + overlay</span>
+        <code>utils/roles.js</code><span class="muted">ข้อมูลบทบาท (ชื่อ/สี/คำอธิบาย)</span>
+        <code>utils/sound.js</code><span class="muted">เสียงสังเคราะห์ (Web Audio)</span>
+      </div>
+    </div>
+  </div>
+  <h3>components/ — 1 ไฟล์ต่อ 1 หน้าจอ</h3>
+  <div class="scroll"><table>
+    <tr><th>ไฟล์</th><th>แสดงตอน phase</th><th>หน้าที่</th></tr>
+    <tr><td><code>Lobby.jsx</code></td><td>LOBBY</td><td>สร้าง/เข้าห้อง, ตั้งค่า, เตะผู้เล่น</td></tr>
+    <tr><td><code>RoleView.jsx</code></td><td>ROLE_VIEW</td><td>เผยบทบาทของคุณ 5 วินาที</td></tr>
+    <tr><td><code>NightPhase.jsx</code></td><td>NIGHT</td><td>จอเลือกเป้าหมาย / จอ "รอบทบาทอื่น"</td></tr>
+    <tr><td><code>WitchPhase.jsx</code></td><td>NIGHT_WITCH</td><td>แม่มดใช้ยาชุบ/ยาพิษ</td></tr>
+    <tr><td><code>DayPhase.jsx</code></td><td>DAY</td><td>ประกาศคนตาย + ปุ่มเริ่มโหวต</td></tr>
+    <tr><td><code>VotingPhase.jsx</code></td><td>VOTING</td><td>โหวตออก / ข้าม</td></tr>
+    <tr><td><code>HunterPhase.jsx</code></td><td>HUNTER_REVENGE</td><td>นายพรานเลือกยิงตอนตาย</td></tr>
+    <tr><td><code>EndGame.jsx</code></td><td>END_GAME</td><td>ประกาศผู้ชนะ + เผยบทบาททุกคน</td></tr>
+    <tr><td><code>ChatBox / PlayersPanel / GameLog</code></td><td>ทุก phase (overlay)</td><td>แชท 💬 / รายชื่อ 👥 / บันทึก 📜</td></tr>
+  </table></div>
+</section>
+
+<!-- ========== 3. DATA ========== -->
+<section id="data">
+  <h2><span class="n">3</span> โครงสร้างข้อมูล</h2>
+  <p class="sec-sub">ทุกอย่างในเกมคือ object <code>GameRoom</code> หนึ่งตัวต่อหนึ่งห้อง เก็บใน <code>Map</code> ในหน่วยความจำ server</p>
+
+  <h3>GameRoom — state ทั้งหมดของห้อง</h3>
+  <pre><span class="c">// gameLogic.js — constructor</span>
+<span class="k">class</span> <span class="f">GameRoom</span> {
+  roomCode          <span class="c">// รหัสห้อง 4 ตัว เช่น "A3F9"</span>
+  players[]         <span class="c">// อาเรย์ผู้เล่น (ดูโครงด้านล่าง)</span>
+  phase             <span class="c">// เฟสปัจจุบัน: LOBBY / NIGHT / DAY ...</span>
+  settings          <span class="c">// { timer, enableFool, enableHunter, enableWitch, ... }</span>
+
+  <span class="c">// ── กลางคืน ──</span>
+  nightActions      <span class="c">// { werewolf:[], seer, doctor, cupid:[], witchHeal, witchPoison }</span>
+  nightQueue[]      <span class="c">// ลำดับบทบาทที่จะปลุกคืนนี้ เช่น ['Werewolf','Seer','Doctor']</span>
+  nightStepIndex    <span class="c">// ตอนนี้อยู่ step ที่เท่าไหร่ในคิว</span>
+  currentNightRole  <span class="c">// บทบาทที่กำลังทำ (ส่งให้ทุกคนเห็น)</span>
+  nightWerewolfVictim <span class="c">// เหยื่อหมาป่า (คำนวณไว้ให้แม่มดดู)</span>
+  pendingWitchKill  <span class="c">// เหยื่อที่แม่มดเห็น (ส่งให้แม่มดคนเดียว)</span>
+
+  <span class="c">// ── โหวต / ตาย / ชนะ ──</span>
+  votes             <span class="c">// Map: voterId → targetId</span>
+  lastVoteBreakdown <span class="c">// [{voter, target}] ไว้เผยผลโหวต</span>
+  lastNightKilled[] <span class="c">// id คนที่ตายเมื่อคืน</span>
+  winner            <span class="c">// null / 'VILLAGERS' / 'WEREWOLVES' / 'FOOL' / 'LOVERS'</span>
+
+  <span class="c">// ── บทบาทพิเศษ ──</span>
+  lovers[]          <span class="c">// [id, id] คู่รักจากคิวปิด</span>
+  cupidActed        <span class="c">// คิวปิดจับคู่แล้วหรือยัง</span>
+  witchPotions      <span class="c">// { heal:true, poison:true } ยาเหลือกี่ขวด</span>
+  pendingHunter     <span class="c">// id นายพรานที่กำลังจะยิง</span>
+  hunterTargetPhase <span class="c">// กลับไป DAY หรือ NIGHT หลังยิง</span>
+
+  <span class="c">// ── อื่นๆ ──</span>
+  dayNumber         <span class="c">// คืน/วันที่เท่าไหร่ (นับเพิ่มทุกคืน)</span>
+  messages[]        <span class="c">// แชท { senderId, text, type }</span>
+  gameLog[]         <span class="c">// บันทึกเหตุการณ์สาธารณะ</span>
+}</pre>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>Player object</h4>
+      <pre><span class="k">{</span>
+  id       <span class="c">// UUID ถาวร</span>
+  socketId <span class="c">// id การเชื่อมต่อ (null=หลุด)</span>
+  name
+  isHost
+  role     <span class="c">// 'Werewolf' | 'Seer' | ...</span>
+  isAlive
+  hasVoted <span class="c">// โหวตรอบนี้แล้ว?</span>
+  hasActed <span class="c">// ทำแอคชั่นกลางคืนแล้ว?</span>
+<span class="k">}</span></pre>
+    </div>
+    <div class="card">
+      <h4>gameState <span class="pill">สิ่งที่ client ได้รับ</span></h4>
+      <p class="muted" style="font-size:.85rem">ผลลัพธ์จาก <code>getState(playerId)</code> — <b>กรองแล้ว</b> เฉพาะคนถาม:</p>
+      <pre><span class="k">{</span>
+  phase, roomCode, dayNumber,
+  players[], <span class="c">// role ถูกซ่อน!</span>
+  currentNightRole,
+  nightProgress, <span class="c">// เฉพาะคนในบทบาทนั้น</span>
+  voteProgress, winner,
+  messages[], <span class="c">// กรองตามช่อง</span>
+  gameLog[], lovers, settings,
+  witchPotions  <span class="c">// เฉพาะแม่มด</span>
+<span class="k">}</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 4. BACKEND ========== -->
+<section id="backend">
+  <h2><span class="n">4</span> Backend — เริ่มทำงานยังไง</h2>
+  <p class="sec-sub">จุดเริ่มต้นสุด: บรรทัดล่างสุดของ <code>server.js</code></p>
+
+  <pre><span class="c">// server.js — จุดเริ่มโปรแกรม</span>
+<span class="k">const</span> io = <span class="f">new</span> Server(httpServer)         <span class="c">// สร้าง Socket.IO</span>
+<span class="k">const</span> rooms = <span class="k">new</span> Map()                 <span class="c">// เก็บทุกห้อง: roomCode → GameRoom</span>
+
+io.<span class="f">on</span>(<span class="s">'connection'</span>, (socket) => {      <span class="c">// ★ มีคนต่อเข้ามา</span>
+   socket.<span class="f">on</span>(<span class="s">'create_room'</span>, ...)         <span class="c">// ลงทะเบียน handler ทุก event</span>
+   socket.<span class="f">on</span>(<span class="s">'night_action'</span>, ...)
+   ... <span class="c">// (ดูตารางข้อ 5)</span>
+})
+
+httpServer.<span class="f">listen</span>(<span class="n">3001</span>)              <span class="c">// ★★ เริ่มรอการเชื่อมต่อ</span></pre>
+
+  <h3>ลำดับการทำงานของ 1 event</h3>
+  <div class="card">
+    <div class="flow">
+      <div class="row"><span class="box teal">socket.on('event')<small>ผู้เล่นส่งมา</small></span><span class="arrow">→</span><span class="box">หา room จาก rooms Map</span></div>
+      <div class="down">↓</div>
+      <div class="row"><span class="box red">room.someMethod()<small>เรียก method ใน GameRoom → เปลี่ยน state</small></span></div>
+      <div class="down">↓</div>
+      <div class="row"><span class="box green">broadcastGameState(room)<small>วน loop ส่ง state ให้ทุกคน (คนละเวอร์ชัน)</small></span></div>
+    </div>
+  </div>
+
+  <h3>GameRoom methods — จัดกลุ่มตามหน้าที่</h3>
+  <div class="scroll"><table>
+    <tr><th>กลุ่ม</th><th>methods</th><th>ทำอะไร</th></tr>
+    <tr><td>ห้อง/ผู้เล่น</td><td><code>addPlayer</code> <code>removePlayer</code> <code>getHost</code> <code>getAlivePlayers</code></td><td>จัดการสมาชิกในห้อง</td></tr>
+    <tr><td>เริ่มเกม</td><td><code>startGame</code> → <code>assignRoles</code></td><td>เช็ก ≥4 คน, สุ่มบทบาท, สับไพ่</td></tr>
+    <tr><td>เฟส</td><td><code>setPhase</code></td><td>เปลี่ยน phase + รีเซ็ตค่าที่เกี่ยว</td></tr>
+    <tr><td>กลางคืน</td><td><code>beginNight</code> <code>startNightStep</code> <code>advanceNightStep</code> <code>finalizeNight</code></td><td>เครื่องยนต์คิว (ข้อ 7)</td></tr>
+    <tr><td>แอคชั่น</td><td><code>handleNightAction</code> <code>handleNightWitchAction</code> <code>handleHunterAction</code></td><td>บันทึกสิ่งที่แต่ละบทบาททำ</td></tr>
+    <tr><td>โหวต</td><td><code>handleVote</code> <code>checkVotingEnd</code> <code>resolveVoting</code></td><td>รับโหวต, นับคะแนน, ประหาร</td></tr>
+    <tr><td>ตาย/ชนะ</td><td><code>killPlayer</code> <code>checkWinCondition</code></td><td>ผลข้างเคียงการตาย (ข้อ 8)</td></tr>
+    <tr><td>ส่ง state</td><td><code>getState</code></td><td>กรองข้อมูลลับ (ข้อ 9)</td></tr>
+  </table></div>
+</section>
+
+<!-- ========== 5. EVENTS ========== -->
+<section id="events">
+  <h2><span class="n">5</span> รายการ Socket Events ทั้งหมด</h2>
+  <p class="sec-sub">การสื่อสารทั้งหมดวิ่งผ่าน event เหล่านี้</p>
+
+  <h3>⬆️ Client → Server (ผู้เล่นส่งขึ้น)</h3>
+  <div class="scroll"><table>
+    <tr><th>event</th><th>เรียก method</th><th>เกิดตอน</th></tr>
+    <tr><td><code>create_room</code></td><td><code>new GameRoom()</code></td><td>กดสร้างห้อง</td></tr>
+    <tr><td><code>join_room</code></td><td><code>addPlayer()</code></td><td>กรอกรหัสเข้าห้อง</td></tr>
+    <tr><td><code>reconnect_player</code></td><td>คืน socketId ให้ player เดิม</td><td>รีเฟรชหน้ากลางเกม</td></tr>
+    <tr><td><code>start_game</code></td><td><code>startGame()</code></td><td>หัวหน้าห้องกดเริ่ม</td></tr>
+    <tr><td><code>night_action</code></td><td><code>handleNightAction()</code></td><td>หมาป่า/ผู้หยั่งรู้/หมอ/คิวปิด เลือกเป้า</td></tr>
+    <tr><td><code>witch_action</code></td><td><code>handleNightWitchAction()</code></td><td>แม่มดใช้ยา</td></tr>
+    <tr><td><code>hunter_action</code></td><td><code>handleHunterAction()</code></td><td>นายพรานยิงตอนตาย</td></tr>
+    <tr><td><code>start_voting</code></td><td><code>setPhase('VOTING')</code></td><td>หัวหน้าห้องเปิดโหวต</td></tr>
+    <tr><td><code>vote</code></td><td><code>handleVote()</code></td><td>โหวตออก</td></tr>
+    <tr><td><code>chat_message</code></td><td><code>addMessage()</code></td><td>ส่งแชท</td></tr>
+    <tr><td><code>play_again</code> / <code>leave_room</code> / <code>kick_player</code></td><td><code>resetGame</code> / <code>removePlayer</code></td><td>เล่นใหม่ / ออก / เตะ</td></tr>
+  </table></div>
+
+  <h3>⬇️ Server → Client (server ส่งลง)</h3>
+  <div class="scroll"><table>
+    <tr><th>event</th><th>ข้อมูล</th><th>client ทำอะไร</th></tr>
+    <tr><td><code>game_state_update</code> <span class="pill">สำคัญสุด</span></td><td>gameState ทั้งก้อน</td><td><code>setGameState()</code> → วาดใหม่</td></tr>
+    <tr><td><code>timer_update</code></td><td>วินาทีที่เหลือ (หรือ null)</td><td>อัปเดตแถบเวลา</td></tr>
+    <tr><td><code>seer_result</code></td><td>{ targetId, role }</td><td>ผู้หยั่งรู้เห็นผลตรวจ</td></tr>
+    <tr><td><code>night_result</code></td><td>id คนที่ตายเมื่อคืน</td><td>DayPhase ประกาศ</td></tr>
+    <tr><td><code>kicked</code> / <code>public_rooms_list</code></td><td>—</td><td>ถูกเตะ / รายชื่อห้อง</td></tr>
+  </table></div>
+  <div class="note">💡 สังเกต: <b>ทุก client รับ <code>game_state_update</code> เป็นหลัก</b> — event อื่นแค่เสริม (ผลตรวจ, คนตาย, เวลา) เพราะข้อมูลลับใส่ใน state ไม่ได้ (จะรั่ว) จึง emit แยกเฉพาะบุคคล</div>
+</section>
+
+<!-- ========== 6. PHASE MACHINE ========== -->
+<section id="phases">
+  <h2><span class="n">6</span> Phase State Machine</h2>
+  <p class="sec-sub">หัวใจของทั้งเกม — <code>room.phase</code> บอกว่าตอนนี้อยู่ช่วงไหน ทั้ง backend และ frontend ตัดสินใจจากค่านี้</p>
+
+  <div class="card">
+    <div class="phases">
+      <span class="phase">LOBBY</span><span class="arrow">→</span>
+      <span class="phase">ROLE_VIEW</span><span class="arrow">→</span>
+      <span class="phase night">NIGHT</span><span class="arrow">→</span>
+      <span class="phase night">NIGHT_WITCH</span><span class="arrow">→</span>
+      <span class="phase day">DAY</span><span class="arrow">→</span>
+      <span class="phase vote">VOTING</span>
+      <span class="arrow">↺</span>
+      <span class="phase end">END_GAME</span>
+    </div>
+  </div>
+
+  <div class="scroll"><table>
+    <tr><th>phase</th><th>อะไรพาเข้ามา</th><th>อะไรพาออก</th></tr>
+    <tr><td><code>LOBBY</code></td><td>สร้างห้อง</td><td>หัวหน้ากด start_game (≥4 คน)</td></tr>
+    <tr><td><code>ROLE_VIEW</code></td><td>startGame()</td><td>อัตโนมัติหลัง 5 วิ → <code>beginNight()</code></td></tr>
+    <tr><td><code>NIGHT</code></td><td>beginNight()</td><td>ทำครบทุก step ในคิว</td></tr>
+    <tr><td><code>NIGHT_WITCH</code></td><td>คิวถึง step แม่มด</td><td>แม่มดใช้ยา / หมดเวลา</td></tr>
+    <tr><td><code>DAY</code></td><td>finalizeNight()</td><td>15 วิ หรือหัวหน้ากดโหวต</td></tr>
+    <tr><td><code>VOTING</code></td><td>DAY จบ</td><td>ทุกคนโหวตครบ → วนกลับ NIGHT</td></tr>
+    <tr><td><code>HUNTER_REVENGE</code></td><td>นายพรานตาย (แทรกได้ทุกเมื่อ)</td><td>นายพรานยิง → กลับ DAY/NIGHT</td></tr>
+    <tr><td><code>END_GAME</code></td><td>checkWinCondition() เจอผู้ชนะ</td><td>หัวหน้ากด play_again → LOBBY</td></tr>
+  </table></div>
+  <div class="note">ตัวกลางเปลี่ยนเฟสหลักคือ <code>processPhaseTransition()</code> ใน server.js — เช็กเงื่อนไขชนะ, ส่ง <code>night_result</code>, ตั้งเวลาเฟสถัดไป</div>
+</section>
+
+<!-- ========== 7. NIGHT ENGINE ========== -->
+<section id="night">
+  <h2><span class="n">7</span> เครื่องยนต์กลางคืน (ทีละบทบาท)</h2>
+  <p class="sec-sub">ส่วนที่ซับซ้อนสุด — กลางคืนปลุกทีละบทบาทตามลำดับ ไม่ทำพร้อมกัน</p>
+
+  <div class="roles">
+    <span class="chip c-cupid">💘 Cupid</span><span class="arrow">→</span>
+    <span class="chip c-ww">🐺 Werewolf</span><span class="arrow">→</span>
+    <span class="chip c-seer">🔮 Seer</span><span class="arrow">→</span>
+    <span class="chip c-doc">💉 Doctor</span><span class="arrow">→</span>
+    <span class="chip c-witch">🧙 Witch</span>
+    <span class="faint" style="font-size:.8rem">(ข้ามบทบาทที่ไม่มี/ตายแล้ว)</span>
+  </div>
+
+  <pre><span class="c">// gameLogic.js — วงจรกลางคืน</span>
+<span class="f">beginNight</span>() {
+  setPhase(<span class="s">'NIGHT'</span>)                  <span class="c">// dayNumber++, ล้าง nightActions</span>
+  nightQueue = <span class="f">buildNightQueue</span>()     <span class="c">// สร้างลำดับเฉพาะบทบาทที่มี+ยังไม่ตาย</span>
+  nightStepIndex = <span class="n">0</span>
+  <span class="f">startNightStep</span>()                  <span class="c">// เปิด step แรก</span>
+}
+
+<span class="f">startNightStep</span>() {
+  <span class="k">if</span> (index >= queue.length) <span class="k">return</span> <span class="f">finalizeNight</span>()  <span class="c">// หมดคิว → จบ</span>
+  currentNightRole = queue[index]     <span class="c">// ★ ตั้งบทบาทที่ทำ (ทุกคนเห็น)</span>
+  <span class="k">if</span> (role === <span class="s">'Witch'</span>)
+    pendingWitchKill = <span class="f">computeWerewolfVictim</span>()  <span class="c">// แม่มดต้องเห็นเหยื่อก่อน</span>
+}</pre>
+
+  <h3>Sequence: หมาป่าทำแอคชั่น 1 คน</h3>
+  <div class="seq">
+    <div class="seq-head"><div class="cl">🖥️ Client (หมาป่า)</div><div class="sv">⚙️ Server</div></div>
+    <div class="seq-step"><div class="msg up">night_action { targetId }</div></div>
+    <div class="seq-step"><div class="side"><span class="seq-num">1</span>คลิกเหยื่อ + ยืนยัน</div><div class="side"></div></div>
+    <div class="seq-step"><div class="side"></div><div class="side"><span class="seq-num">2</span><code>handleNightAction()</code> บันทึกลง nightActions.werewolf</div></div>
+    <div class="seq-step"><div class="side"></div><div class="side"><span class="seq-num">3</span><code>checkStepEnd()</code>? หมาป่าครบทุกคน → <code>advanceNightStep()</code></div></div>
+    <div class="seq-step"><div class="side"></div><div class="side"><span class="seq-num">4</span>step ต่อไป = Seer → <code>continueNight()</code></div></div>
+    <div class="seq-step"><div class="msg down">game_state_update (currentNightRole='Seer')</div></div>
+    <div class="seq-step"><div class="side"><span class="seq-num">5</span>เห็นจอ "🔮 ผู้หยั่งรู้กำลังทำหน้าที่..."</div><div class="side"></div></div>
+  </div>
+
+  <pre><span class="c">// จบคิว → รวมผลทั้งคืนทีเดียว</span>
+<span class="f">finalizeNight</span>() {
+  <span class="k">if</span> (cupid จับคู่) lovers = [...]          <span class="c">// 1. จับคู่รักก่อน (สำคัญ!)</span>
+  victim = werewolfVictim
+  <span class="k">if</span> (witchHeal) victim = <span class="k">null</span>          <span class="c">// 2. แม่มดชุบ → รอด</span>
+  <span class="k">if</span> (victim) <span class="f">killPlayer</span>(victim)        <span class="c">// 3. ลงดาบหมาป่า</span>
+  <span class="k">if</span> (witchPoison) <span class="f">killPlayer</span>(poison)   <span class="c">// 4. ยาพิษ</span>
+  setPhase(<span class="s">'DAY'</span>)
+}</pre>
+  <div class="note warn">⚠️ <b>ทำไมแม่มดอยู่ท้ายสุด?</b> เพราะต้องรู้ก่อนว่าคืนนั้นหมาป่าจะฆ่าใคร (หลังหมอเซฟ) จึงตัดสินใจชุบชีวิตได้ — คำนวณไว้ใน <code>computeWerewolfVictim()</code> แล้วเก็บใน <code>pendingWitchKill</code></div>
+  <div class="note danger">🔒 <b>กันข้อมูลรั่ว:</b> <code>nightProgress</code> (เช่น "หมาป่า 0/2") ส่งให้<b>เฉพาะคนในบทบาทนั้น</b> ไม่งั้นชาวบ้านจะรู้จำนวนหมาป่า</div>
+</section>
+
+<!-- ========== 8. DEATH ========== -->
+<section id="death">
+  <h2><span class="n">8</span> การตาย &amp; ผลข้างเคียง</h2>
+  <p class="sec-sub">การตายทุกกรณี<b>ต้องผ่าน</b> <code>killPlayer(id, deathPhase)</code> — เพราะมันจุดชนวนกลไกพิเศษ</p>
+
+  <pre><span class="c">// gameLogic.js — killPlayer</span>
+<span class="f">killPlayer</span>(id, deathPhase) {
+  player.isAlive = <span class="k">false</span>
+
+  <span class="k">if</span> (role === <span class="s">'Fool'</span> && deathPhase === <span class="s">'VOTING'</span>)
+     winner = <span class="s">'FOOL'</span>                    <span class="c">// คนบ้าถูกโหวต = ชนะ!</span>
+
+  <span class="k">if</span> (role === <span class="s">'Hunter'</span>) {
+     setPhase(<span class="s">'HUNTER_REVENGE'</span>)         <span class="c">// นายพรานได้ยิงก่อนตาย</span>
+     pendingHunter = id
+  }
+
+  <span class="k">if</span> (lovers.includes(id)) {            <span class="c">// คู่รักตรอมใจตายตาม</span>
+     <span class="f">killPlayer</span>(otherLover, deathPhase)  <span class="c">// ← recursive!</span>
+  }
+}</pre>
+
+  <div class="grid3">
+    <div class="card"><h4 style="color:var(--yellow)">🤡 Fool</h4><p class="muted" style="font-size:.85rem">ถูกโหวตออก → <code>winner='FOOL'</code> ชนะทันที</p></div>
+    <div class="card"><h4 style="color:var(--purple)">🏹 Hunter</h4><p class="muted" style="font-size:.85rem">ตาย → เข้า HUNTER_REVENGE เลือกยิง 1 คน</p></div>
+    <div class="card"><h4 style="color:var(--pink)">💘 Lovers</h4><p class="muted" style="font-size:.85rem">คนหนึ่งตาย → อีกคนตายตาม (เรียกตัวเองซ้ำ)</p></div>
+  </div>
+
+  <h3>เงื่อนไขชนะ — checkWinCondition()</h3>
+  <div class="scroll"><table>
+    <tr><th>ผล</th><th>เงื่อนไข</th></tr>
+    <tr><td class="chip c-vil" style="border:none">VILLAGERS</td><td>หมาป่าเหลือ 0 ตัว</td></tr>
+    <tr><td class="chip c-ww" style="border:none">WEREWOLVES</td><td>หมาป่า ≥ ชาวบ้านที่เหลือ</td></tr>
+    <tr><td style="color:var(--yellow)">FOOL</td><td>คนบ้าถูกโหวตออก</td></tr>
+    <tr><td style="color:var(--pink)">LOVERS</td><td>เหลือ 2 คนสุดท้ายเป็นคู่รักกัน</td></tr>
+  </table></div>
+</section>
+
+<!-- ========== 9. SECRECY ========== -->
+<section id="secrecy">
+  <h2><span class="n">9</span> ระบบความลับ — getState(playerId)</h2>
+  <p class="sec-sub">จุดที่ทำให้เกมโกงไม่ได้ — server สร้าง state <b>เฉพาะคนถาม</b> ไม่เคยส่งข้อมูลลับให้ทุกคนเท่ากัน</p>
+
+  <pre><span class="c">// gameLogic.js — getState ตัดข้อมูลก่อนส่ง</span>
+<span class="f">getState</span>(playerId) {
+  players.map(p => ({
+     ...p,
+     role: <span class="f">canSee</span>(playerId, p) ? p.role : <span class="k">null</span>   <span class="c">// ★ ซ่อน role!</span>
+  }))
+  <span class="c">// canSee = จริง เมื่อ: เป็นตัวเอง | หมาป่าดูหมาป่า | จบเกมแล้ว</span>
+}</pre>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>กฎการมองเห็น</h4>
+      <ul>
+        <li>เห็น <b>role ตัวเอง</b> เท่านั้น</li>
+        <li><b>หมาป่า</b> เห็นหมาป่าด้วยกัน</li>
+        <li>จบเกม (END_GAME) เห็นทุก role</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>กรองแชต 3 ช่อง</h4>
+      <ul>
+        <li><code>GLOBAL</code> — ทุกคนเห็น</li>
+        <li><code>WEREWOLF</code> — เฉพาะหมาป่า (เด็กน้อยแอบเห็น แต่ชื่อถูกซ่อน)</li>
+        <li><code>DEAD</code> — เฉพาะคนตาย</li>
+      </ul>
+    </div>
+  </div>
+  <div class="note danger">เพราะ state ของแต่ละคน<b>ไม่เหมือนกัน</b> → <code>broadcastGameState()</code> จึงต้อง<b>วน loop เรียก getState(p.id) ทีละคน</b> แล้ว emit เข้า socket ของคนนั้น ไม่ใช่ส่งก้อนเดียวเข้าห้อง (<code>io.to(room)</code>)</div>
+</section>
+
+<!-- ========== 10. FRONTEND ========== -->
+<section id="frontend">
+  <h2><span class="n">10</span> Frontend — เริ่มทำงานยังไง</h2>
+  <p class="sec-sub"><code>index.html</code> → <code>main.jsx</code> → mount <code>&lt;App/&gt;</code> — ทุกอย่างอยู่ใน App.jsx</p>
+
+  <pre><span class="c">// App.jsx — โครงหลัก</span>
+<span class="k">const</span> socket = <span class="f">io</span>(SERVER_URL)          <span class="c">// ★ สร้าง 1 ครั้ง (นอก component)</span>
+
+<span class="k">function</span> <span class="f">App</span>() {
+  <span class="k">const</span> [gameState, setGameState] = <span class="f">useState</span>()   <span class="c">// สำเนา state จาก server</span>
+  <span class="k">const</span> [playerId, setPlayerId] = <span class="f">useState</span>()
+
+  <span class="f">useEffect</span>(() => {                    <span class="c">// ★ ลงทะเบียนหูฟังตอน mount</span>
+     socket.<span class="f">on</span>(<span class="s">'game_state_update'</span>, setGameState)   <span class="c">// หัวใจ!</span>
+     socket.<span class="f">on</span>(<span class="s">'seer_result'</span>, setSeerResult)
+     socket.<span class="f">on</span>(<span class="s">'timer_update'</span>, setTimeRemaining)
+     ...
+  }, [])
+
+  <span class="k">return</span> <span class="f">renderPhase</span>()               <span class="c">// เลือกจอตาม gameState.phase</span>
+}</pre>
+
+  <h3>renderPhase() — switch เลือกจอ</h3>
+  <pre><span class="k">switch</span> (gameState.phase) {
+   <span class="k">case</span> <span class="s">'LOBBY'</span>:   <span class="k">return</span> &lt;Lobby/&gt;
+   <span class="k">case</span> <span class="s">'NIGHT'</span>:   <span class="k">return</span> &lt;NightPhase/&gt;
+   <span class="k">case</span> <span class="s">'VOTING'</span>:  <span class="k">return</span> &lt;VotingPhase/&gt;
+   ... <span class="c">// 1 phase = 1 component</span>
+}</pre>
+
+  <div class="note">💡 <b>ทำไมแค่ setGameState แล้วจอเปลี่ยนเอง?</b> เพราะ React: พอ state เปลี่ยน → component render ใหม่ → <code>renderPhase()</code> ถูกเรียกใหม่ → เลือก component ตาม phase ล่าสุด ทุกอย่างขับด้วย <code>gameState</code> ตัวเดียว</div>
+
+  <h3>ทิศทางข้อมูล (วงจรปิด)</h3>
+  <div class="card">
+    <div class="flow">
+      <div class="row"><span class="box">ผู้เล่นคลิก</span><span class="arrow">→</span><span class="box teal">handler เช่น handleVote()</span><span class="arrow">→</span><span class="box">socket.emit(...)</span></div>
+      <div class="down">↓ &nbsp;<span class="faint">(server ประมวลผล — ข้อ 4-8)</span></div>
+      <div class="row"><span class="box green">socket.on('game_state_update')</span><span class="arrow">→</span><span class="box">setGameState()</span><span class="arrow">→</span><span class="box yellow">re-render</span></div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.9rem">👉 client <b>ไม่เคยตัดสินผลเกมเอง</b> — แค่ emit แล้วรอ state ใหม่มาวาด</p>
+</section>
+
+<!-- ========== 11. ROUND TRIP ========== -->
+<section id="roundtrip">
+  <h2><span class="n">11</span> ตัวอย่างเต็ม: 1 คืน → 1 วัน</h2>
+  <p class="sec-sub">ไล่ตั้งแต่หัวหน้ากดเริ่มเกม จนได้ผู้ชนะ</p>
+
+  <ol class="steps">
+    <li><b>หัวหน้ากด "เริ่มเกม"</b> → emit <code>start_game</code> → <code>startGame()</code> สุ่มบทบาท → phase = <code>ROLE_VIEW</code> → ทุกคนเห็นบทบาทตัวเอง 5 วิ</li>
+    <li><b>อัตโนมัติ</b> → <code>beginNight()</code> → สร้างคิว <code>[Werewolf, Seer, Doctor]</code> → phase <code>NIGHT</code>, currentNightRole = Werewolf</li>
+    <li><b>🐺 หมาป่า</b> เลือกเหยื่อ → <code>handleNightAction</code> → step ต่อไป (Seer) — คนอื่นเห็น "หมาป่ากำลังทำหน้าที่"</li>
+    <li><b>🔮 ผู้หยั่งรู้</b> ตรวจ 1 คน → server emit <code>seer_result</code> เฉพาะผู้หยั่งรู้ → เห็น "X คือ หมาป่า"</li>
+    <li><b>💉 หมอ</b> เลือกคุ้มครอง → หมดคิว → <code>finalizeNight()</code> ลงดาบ (เว้นถ้าหมอเซฟ) → phase <code>DAY</code></li>
+    <li><b>☀️ กลางวัน</b> → emit <code>night_result</code> → DayPhase ประกาศคนตาย → รอ 15 วิ หรือหัวหน้ากดโหวต</li>
+    <li><b>🗳️ โหวต</b> → ทุกคน emit <code>vote</code> → ครบ → <code>resolveVoting()</code> ประหารคนคะแนนสูงสุด</li>
+    <li><b>เช็กผู้ชนะ</b> → <code>checkWinCondition()</code>: ยังไม่จบ → <code>beginNight()</code> วนคืนใหม่ · จบ → phase <code>END_GAME</code> เผยบทบาททุกคน</li>
+  </ol>
+</section>
+
+<!-- ========== 12. TIMERS ========== -->
+<section id="timers">
+  <h2><span class="n">12</span> ระบบจับเวลา</h2>
+  <p class="sec-sub">แต่ละ step/phase มีตัวนับถอยหลัง ถ้าหมดเวลา = บังคับไปต่อ</p>
+  <pre><span class="c">// server.js</span>
+<span class="f">startRoomTimer</span>(roomCode) {
+   <span class="k">let</span> timeLeft = room.settings.timer
+   setInterval(() => {
+      timeLeft--
+      io.to(roomCode).<span class="f">emit</span>(<span class="s">'timer_update'</span>, timeLeft)   <span class="c">// อัปเดตแถบเวลา</span>
+      <span class="k">if</span> (timeLeft &lt;= <span class="n">0</span>) {                          <span class="c">// ★ หมดเวลา = บังคับไปต่อ</span>
+         <span class="k">if</span> (phase===<span class="s">'NIGHT'</span>) advanceNightStep()   <span class="c">// ข้าม step</span>
+         <span class="k">if</span> (phase===<span class="s">'VOTING'</span>) resolveVoting()    <span class="c">// จบโหวต</span>
+      }
+   }, <span class="n">1000</span>)
+}</pre>
+  <div class="kv">
+    <code>roomTimers</code><span class="muted">เก็บ setInterval ของแต่ละห้อง (clear ได้)</span>
+    <code>roomTimeLeft</code><span class="muted">เก็บวินาทีปัจจุบัน — ส่งให้คนที่รีเฟรชเห็นเวลาต่อทันที</span>
+    <code>stopRoomTimer</code><span class="muted">หยุด + ส่ง timer_update(null) ให้แถบเวลาหาย</span>
+  </div>
+  <div class="note">ตอนคนกดครบก่อนหมดเวลา (เช่น หมาป่าเลือกเสร็จ) จะเรียก <code>stopRoomTimer</code> แล้วไป step ถัดไปทันที ไม่ต้องรอเวลาหมด</div>
+</section>
+
+<footer>
+  📄 เอกสารนี้สร้างจากการวิเคราะห์โค้ดจริง · อ่าน CLAUDE.md สำหรับสรุปเชิงเทคนิคเพิ่มเติม<br>
+  <span class="faint">ไฟล์หลักที่ควรเปิดดูคู่กัน: backend/gameLogic.js · backend/server.js · frontend/src/App.jsx</span>
+</footer>
+
+</div>
+</body>
+</html>
