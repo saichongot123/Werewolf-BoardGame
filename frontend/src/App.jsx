@@ -1,17 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import Lobby from './components/Lobby';
-import RoleView from './components/RoleView';
-import NightPhase from './components/NightPhase';
-import DayPhase from './components/DayPhase';
-import VotingPhase from './components/VotingPhase';
-import EndGame from './components/EndGame';
 import ChatBox from './components/ChatBox';
-import HunterPhase from './components/HunterPhase';
-import WitchPhase from './components/WitchPhase';
 import RoleGallery from './components/RoleGallery';
 import PlayersPanel from './components/PlayersPanel';
 import GameLog from './components/GameLog';
+import GameSelect from './components/GameSelect';
+import { getGameRenderer } from './games';
 import { getRole } from './utils/roles';
 import { playNightSound, playDaySound, playAlertSound } from './utils/sound';
 
@@ -27,6 +22,12 @@ const PHASE_LABELS = {
   VOTING: { icon: '🗳️', text: 'โหวต · วันที่' },
   HUNTER_REVENGE: { icon: '🏹', text: 'ล้างแค้นนายพราน' },
   END_GAME: { icon: '🏁', text: 'จบเกม' },
+  // Sheriff of Nottingham
+  MARKET: { icon: '🎪', text: 'ตลาด · จัดไพ่' },
+  LOAD: { icon: '📦', text: 'ใส่ถุง · ประกาศสินค้า' },
+  INSPECTION: { icon: '🔍', text: 'ด่านตรวจ' },
+  RESOLVE: { icon: '⚖️', text: 'ผลการตรวจ' },
+  SCORING: { icon: '🏆', text: 'นับคะแนน' },
 };
 
 // Does the current player have a pending action this phase? (used for the alert)
@@ -67,6 +68,8 @@ function App() {
   const [publicRooms, setPublicRooms] = useState([]);
   const [showPublicRooms, setShowPublicRooms] = useState(false);
   const [publicName, setPublicName] = useState('');
+  const [showGameSelect, setShowGameSelect] = useState(false);
+  const [createName, setCreateName] = useState('');
   const [showManual, setShowManual] = useState(false);
   const [showRoleHelp, setShowRoleHelp] = useState(false);
   const [activePanel, setActivePanel] = useState(null); // 'players' | 'log' | null
@@ -154,11 +157,19 @@ function App() {
     }
   }, [gameState?.phase]);
 
-  const handleCreateRoom = (name) => {
-    socket.emit('create_room', name, (response) => {
+  // Step 1: name entered → show the game picker
+  const handleChooseGame = (name) => {
+    setCreateName(name);
+    setShowGameSelect(true);
+  };
+
+  // Step 2: game picked → actually create the room of that type
+  const handleCreateRoom = (name, gameType = 'werewolf') => {
+    socket.emit('create_room', { name, gameType }, (response) => {
       if (response.success) {
         setPlayerId(response.playerId);
         setGameState(response.gameState);
+        setShowGameSelect(false);
         sessionStorage.setItem('werewolf_playerId', response.playerId);
         sessionStorage.setItem('werewolf_roomCode', response.roomCode);
       } else {
@@ -188,6 +199,12 @@ function App() {
   
   const handleNightAction = (targetId) => {
     socket.emit('night_action', { roomCode: gameState.roomCode, targetId });
+  };
+
+  // Generic per-game action channel (used by Sheriff and future games).
+  // `payload` carries a `type` the game's handleEvent switches on.
+  const handleGameAction = (payload) => {
+    socket.emit('game_action', { roomCode: gameState.roomCode, ...payload });
   };
   
   const startVoting = () => {
@@ -300,69 +317,44 @@ function App() {
        );
     }
 
-    if (!gameState) {
-      return <Lobby 
-                onCreateRoom={handleCreateRoom} 
-                onJoinRoom={handleJoinRoom} 
-                onFetchPublicRooms={fetchPublicRooms}
-                error={error} 
+    if (showGameSelect && !gameState) {
+      return <GameSelect
+                playerName={createName}
+                onSelect={(gameType) => handleCreateRoom(createName, gameType)}
+                onBack={() => setShowGameSelect(false)}
              />;
     }
 
-    switch (gameState.phase) {
-      case 'LOBBY':
-        return <Lobby 
-                  gameState={gameState} 
-                  currentPlayer={currentPlayer} 
-                  onStartGame={startGame}
-                  onUpdateSettings={handleUpdateSettings}
-                  onKickPlayer={handleKickPlayer}
-                  error={error} 
-               />;
-      case 'ROLE_VIEW':
-        return <RoleView player={currentPlayer} />;
-      case 'NIGHT':
-        return <NightPhase 
-                  gameState={gameState} 
-                  currentPlayer={currentPlayer} 
-                  onAction={handleNightAction}
-                  seerResult={seerResult}
-               />;
-      case 'NIGHT_WITCH':
-        return <WitchPhase 
-                  gameState={gameState} 
-                  currentPlayer={currentPlayer} 
-                  onWitchAction={handleWitchAction} 
-               />;
-      case 'DAY':
-        return <DayPhase 
-                  gameState={gameState} 
-                  currentPlayer={currentPlayer}
-                  nightResult={nightResult}
-                  onStartVoting={startVoting}
-                  voteResult={voteResult}
-               />;
-      case 'VOTING':
-        return <VotingPhase 
-                  gameState={gameState} 
-                  currentPlayer={currentPlayer} 
-                  onVote={handleVote} 
-               />;
-      case 'HUNTER_REVENGE':
-        return <HunterPhase 
-                  gameState={gameState} 
-                  currentPlayer={currentPlayer} 
-                  onHunterAction={handleHunterAction} 
-               />;
-      case 'END_GAME':
-        return <EndGame 
-                  gameState={gameState} 
-                  currentPlayer={currentPlayer}
-                  onPlayAgain={playAgain}
-               />;
-      default:
-        return <div>Unknown Phase</div>;
+    if (!gameState) {
+      return <Lobby
+                onCreateRoom={handleChooseGame}
+                onJoinRoom={handleJoinRoom}
+                onFetchPublicRooms={fetchPublicRooms}
+                error={error}
+             />;
     }
+
+    // Delegate to the renderer for whichever game this room is running.
+    // App stays game-agnostic: it just hands over state + handlers.
+    const renderGame = getGameRenderer(gameState.gameType);
+    return renderGame({
+      gameState,
+      currentPlayer,
+      error,
+      seerResult,
+      nightResult,
+      voteResult,
+      onStartGame: startGame,
+      onUpdateSettings: handleUpdateSettings,
+      onKickPlayer: handleKickPlayer,
+      onNightAction: handleNightAction,
+      onWitchAction: handleWitchAction,
+      onHunterAction: handleHunterAction,
+      onVote: handleVote,
+      onStartVoting: startVoting,
+      onGameAction: handleGameAction,
+      onPlayAgain: playAgain,
+    });
   };
   const isNight = gameState?.phase === 'NIGHT';
   const totalTime = gameState?.settings?.timer || 60;
@@ -493,12 +485,15 @@ function App() {
         </div>
       )}
 
-      {/* Bottom-left toolbar: manual / players / log */}
+      {/* Bottom-left toolbar. Role manual + players list are Werewolf-specific;
+          the event log is generic (each game fills its own). */}
       {inGame && (
         <div style={{ position: 'fixed', bottom: 20, left: 20, zIndex: 999, display: 'flex', gap: '8px' }}>
           {[
-            { key: 'help', icon: '❓', title: 'คู่มือบทบาท', onClick: () => setShowManual(true) },
-            { key: 'players', icon: '👥', title: 'รายชื่อผู้เล่น', onClick: () => setActivePanel(activePanel === 'players' ? null : 'players') },
+            ...(gameState.gameType === 'werewolf' ? [
+              { key: 'help', icon: '❓', title: 'คู่มือบทบาท', onClick: () => setShowManual(true) },
+              { key: 'players', icon: '👥', title: 'รายชื่อผู้เล่น', onClick: () => setActivePanel(activePanel === 'players' ? null : 'players') },
+            ] : []),
             { key: 'log', icon: '📜', title: 'บันทึกเหตุการณ์', onClick: () => setActivePanel(activePanel === 'log' ? null : 'log') },
           ].map(btn => (
             <button

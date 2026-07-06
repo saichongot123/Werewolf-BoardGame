@@ -4,7 +4,8 @@ import React, { useRef, useEffect } from 'react';
 // full who-voted-whom breakdown). Newest entries at the bottom.
 function GameLog({ gameState, isOpen, onClose }) {
   const endRef = useRef(null);
-  const log = gameState?.gameLog || [];
+  // Werewolf fills `gameLog`; Sheriff (and future games) fill `log`.
+  const log = gameState?.gameLog || gameState?.log || [];
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });

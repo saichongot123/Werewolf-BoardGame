@@ -24,14 +24,23 @@ The frontend chooses the backend URL from `VITE_SERVER_URL` (defaults to `http:/
 
 ## Architecture
 
-**Server is authoritative.** All game logic and state live in `backend/gameLogic.js`
-(`GameRoom` class). `backend/server.js` is purely the Socket.IO transport layer: it owns
-the `rooms` Map (`roomCode -> GameRoom`, in-memory only — restarting the server loses all
+**Multi-game platform.** The backend is split into a game-agnostic room layer and
+per-game modules. `backend/Room.js` (`BaseRoom`) holds only generic concerns —
+players, host, chat, `settings.timer`. Each game subclasses it: `backend/games/werewolf.js`
+(`WerewolfGame extends BaseRoom`) holds all Werewolf logic. `backend/games/index.js` is the
+registry (`GAMES`, `createGame(gameType, roomCode)`, `gameMeta`) — add a new game by creating
+`games/<name>.js` and registering it. `create_room` accepts `{ name, gameType }` (or a bare
+name string, defaulting to `werewolf`); `getState` returns `gameType` so the client can pick
+its component set.
+
+**Server is authoritative.** All game logic and state live in the game module
+(`WerewolfGame`). `backend/server.js` is purely the Socket.IO transport layer: it owns
+the `rooms` Map (`roomCode -> game instance`, in-memory only — restarting the server loses all
 games) and per-room countdown timers (`roomTimers`), and translates socket events into
-`GameRoom` method calls. The client never computes game outcomes; it emits intent and
+game-method calls. The client never computes game outcomes; it emits intent and
 re-renders whatever state the server pushes back.
 
-**State fan-out is per-player and role-aware.** `GameRoom.getState(playerId)` returns a
+**State fan-out is per-player and role-aware.** `getState(playerId)` returns a
 *redacted* view: a player sees only their own role (werewolves also see each other),
 and chat messages are filtered by channel (`GLOBAL` / `WEREWOLF` / `DEAD`) against the
 requester. LittleGirl can peek at the werewolf channel but sees the sender anonymized.
@@ -45,7 +54,7 @@ may see and put that logic in `getState`, not on the client.
 `HUNTER_REVENGE` and terminal `END_GAME`. The frontend `App.jsx` `renderPhase()` switch
 maps each phase to a component (`Lobby`, `RoleView`, `NightPhase`, `WitchPhase`,
 `DayPhase`, `VotingPhase`, `HunterPhase`, `EndGame`); `ChatBox` renders on top of all
-phases. Adding a phase means updating both the transition logic in `gameLogic.js`/`server.js`
+phases. Adding a phase means updating both the transition logic in `games/werewolf.js`/`server.js`
 and this switch.
 
 **Phase transitions are resolved in two ways** and both must stay in sync:

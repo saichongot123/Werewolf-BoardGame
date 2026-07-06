@@ -1,13 +1,18 @@
-class GameRoom {
+const crypto = require('crypto');
+const { BaseRoom } = require('../Room');
+
+// Werewolf (Mafia) game logic. Extends BaseRoom, which provides the generic
+// room concerns (players, host, chat, settings). Everything below is
+// Werewolf-specific: phases, roles, the sequential night engine, voting,
+// deaths, win conditions, and the per-player redacted getState().
+class WerewolfGame extends BaseRoom {
   constructor(roomCode) {
-    this.roomCode = roomCode;
-    this.players = []; // Array of player objects
-    this.phase = 'LOBBY'; // LOBBY, ROLE_VIEW, NIGHT, DAY, VOTING, END_GAME
-    this.nightActions = { werewolf: [], seer: null, doctor: null }; 
+    super(roomCode, 'werewolf');
+    this.phase = 'LOBBY'; // LOBBY, ROLE_VIEW, NIGHT, NIGHT_WITCH, DAY, VOTING, HUNTER_REVENGE, END_GAME
+    this.nightActions = { werewolf: [], seer: null, doctor: null };
     this.votes = new Map(); // voterId -> targetId
-    this.winner = null; // 'WEREWOLVES' or 'VILLAGERS'
+    this.winner = null; // 'WEREWOLVES' | 'VILLAGERS' | 'FOOL' | 'LOVERS'
     this.lastNightKilled = null; // Array of player IDs killed last night
-    this.messages = []; // Array of chat messages { id, senderId, senderName, text, type, timestamp }
     this.settings = {
       timer: 60,
       enableFool: false,
@@ -31,11 +36,6 @@ class GameRoom {
     this.nightWerewolfVictim = undefined; // precomputed for the witch step
   }
 
-  addMessage(msg) {
-    this.messages.push(msg);
-    if (this.messages.length > 100) this.messages.shift();
-  }
-
   addLog(text) {
     this.gameLog.push({ id: `${this.dayNumber}-${this.gameLog.length}`, text });
     if (this.gameLog.length > 100) this.gameLog.shift();
@@ -50,26 +50,6 @@ class GameRoom {
     } else {
       this.addLog(`🌙 คืนที่ ${this.dayNumber}: คืนอันเงียบสงบ ไม่มีใครเสียชีวิต`);
     }
-  }
-
-  updateSettings(newSettings) {
-    this.settings = { ...this.settings, ...newSettings };
-  }
-
-  addPlayer(player) {
-    this.players.push(player);
-  }
-
-  removePlayer(playerId) {
-    this.players = this.players.filter(p => p.id !== playerId);
-  }
-
-  getPlayer(playerId) {
-    return this.players.find(p => p.id === playerId);
-  }
-
-  getHost() {
-    return this.players.find(p => p.isHost);
   }
 
   getAlivePlayers() {
@@ -394,7 +374,7 @@ class GameRoom {
     if (this.winner === 'FOOL') return 'FOOL';
 
     const alive = this.getAlivePlayers();
-    
+
     // Check lovers win
     if (alive.length === 2 && this.lovers.length === 2) {
        const isLover1Alive = alive.find(p => p.id === this.lovers[0]);
@@ -430,11 +410,189 @@ class GameRoom {
       });
   }
 
+  // ── Game interface (called by the generic server via ctx) ──
+
+  // After startGame(): show roles for 5s, then begin the first night.
+  onStart(ctx) {
+    ctx.after(5000, () => {
+      if (this.phase === 'ROLE_VIEW') {
+        this.beginNight();
+        this.transition(ctx);
+      }
+    });
+  }
+
+  // A game action arrived from a player. Route by event name.
+  handleEvent(event, player, payload, ctx) {
+    switch (event) {
+      case 'start_voting': {
+        if (!player?.isHost || this.phase !== 'DAY') return;
+        const winner = this.checkWinCondition();
+        if (winner) {
+          this.setPhase('END_GAME');
+          this.winner = winner;
+          ctx.broadcast();
+          return;
+        }
+        this.setPhase('VOTING');
+        ctx.broadcast();
+        ctx.startTimer();
+        return;
+      }
+
+      case 'night_action': {
+        if (this.phase !== 'NIGHT' || !player || !player.isAlive) return;
+        const result = this.handleNightAction(player, payload.targetId);
+        if (player.role === 'Seer' && result) ctx.emitPlayer(player.id, 'seer_result', result);
+        if (this.checkStepEnd()) {
+          ctx.stopTimer();
+          this.advanceNightStep();
+          this.continueNight(ctx);
+        } else {
+          ctx.broadcast();
+        }
+        return;
+      }
+
+      case 'witch_action': {
+        if (this.phase !== 'NIGHT_WITCH' || !player || !player.isAlive || player.role !== 'Witch') return;
+        const ok = this.handleNightWitchAction(player, payload.action);
+        if (ok && this.checkStepEnd()) {
+          ctx.stopTimer();
+          this.advanceNightStep();
+          this.continueNight(ctx);
+        } else {
+          ctx.broadcast();
+        }
+        return;
+      }
+
+      case 'hunter_action': {
+        if (this.phase !== 'HUNTER_REVENGE' || !player || player.id !== this.pendingHunter) return;
+        ctx.stopTimer();
+        this.handleHunterAction(payload.targetId);
+        this.transition(ctx);
+        return;
+      }
+
+      case 'vote': {
+        if (this.phase !== 'VOTING' || !player || !player.isAlive) return;
+        this.handleVote(player.id, payload.targetId);
+        if (this.checkVotingEnd()) {
+          ctx.stopTimer();
+          this.resolveVoting();
+          this.startNextNightOrEnd();
+          this.transition(ctx);
+        } else {
+          ctx.broadcast();
+        }
+        return;
+      }
+
+      default:
+        return;
+    }
+  }
+
+  // The phase/step countdown hit zero — force progress.
+  onTimerExpire(ctx) {
+    if (this.phase === 'NIGHT' || this.phase === 'NIGHT_WITCH') {
+      this.advanceNightStep();
+      this.continueNight(ctx);
+    } else if (this.phase === 'VOTING') {
+      this.resolveVoting();
+      this.startNextNightOrEnd();
+      this.transition(ctx);
+    } else if (this.phase === 'HUNTER_REVENGE') {
+      this.handleHunterAction(null); // didn't shoot in time — skip
+      this.transition(ctx);
+    }
+  }
+
+  // After a night step completes: run the next step, or finish into day.
+  continueNight(ctx) {
+    if (this.phase === 'NIGHT' || this.phase === 'NIGHT_WITCH') {
+      ctx.broadcast();
+      ctx.startTimer();
+    } else {
+      this.transition(ctx);
+    }
+  }
+
+  // After voting: end on a win, otherwise start the next night.
+  startNextNightOrEnd() {
+    if (this.phase === 'HUNTER_REVENGE') return; // hunter interrupt routes itself
+    const winner = this.checkWinCondition();
+    if (winner) {
+      this.setPhase('END_GAME');
+      this.winner = winner;
+    } else {
+      this.beginNight();
+    }
+  }
+
+  // Central phase-transition: win check, announce deaths, arm the next timer.
+  transition(ctx) {
+    // DAY (discussion) and END_GAME have no countdown — clear any leftover bar.
+    if (this.phase === 'DAY' || this.phase === 'END_GAME') {
+      ctx.stopTimer();
+    }
+
+    if (this.phase === 'HUNTER_REVENGE') {
+      ctx.startTimer();
+    } else if (this.phase === 'NIGHT_WITCH') {
+      ctx.startTimer();
+    } else if (this.phase === 'DAY') {
+      const winner = this.checkWinCondition();
+      if (winner) {
+        this.logNightSummary();
+        this.setPhase('END_GAME');
+        this.winner = winner;
+      } else {
+        this.logNightSummary();
+        ctx.emitRoom('night_result', this.lastNightKilled || []);
+        // 15s discussion, then voting (unless the host opened it early)
+        ctx.after(15000, () => {
+          if (this.phase === 'DAY') {
+            this.setPhase('VOTING');
+            ctx.startTimer();
+            ctx.broadcast();
+          }
+        });
+      }
+    } else if (this.phase === 'NIGHT') {
+      ctx.startTimer();
+    }
+    ctx.broadcast();
+  }
+
+  // Chat channel rules (overrides the plain BaseRoom default).
+  buildChatMessage(sender, text, type) {
+    let actualType = 'GLOBAL';
+    if (!sender.isAlive) {
+      actualType = 'DEAD';
+    } else if (type === 'WEREWOLF' && sender.role === 'Werewolf') {
+      actualType = 'WEREWOLF';
+    }
+    // Living players can't talk in the global channel during the night
+    if (actualType === 'GLOBAL' && sender.isAlive && this.phase === 'NIGHT') {
+      return null;
+    }
+    return {
+      id: crypto.randomUUID(),
+      senderId: sender.id,
+      senderName: sender.name,
+      text,
+      type: actualType,
+      timestamp: Date.now(),
+    };
+  }
+
   // Returns state, selectively revealing roles based on who is asking
   getState(playerId = null) {
     const safePlayers = this.players.map(p => {
        const isEndGame = this.phase === 'END_GAME';
-       
+
        let displayRole = null;
        if (isEndGame) {
            displayRole = p.role;
@@ -456,14 +614,14 @@ class GameRoom {
            isAlive: p.isAlive,
            hasVoted: p.hasVoted,
            hasActed: p.hasActed,
-           role: displayRole 
+           role: displayRole
        };
     });
 
     let safeMessages = this.messages.filter(m => {
        const requestingPlayer = this.getPlayer(playerId);
        if (!requestingPlayer) return false;
-       
+
        if (m.type === 'GLOBAL') return true;
        if (m.type === 'DEAD') return !requestingPlayer.isAlive;
        if (m.type === 'WEREWOLF') return requestingPlayer.role === 'Werewolf' || requestingPlayer.role === 'LittleGirl';
@@ -494,6 +652,7 @@ class GameRoom {
     const voteProgress = { done: alive.filter(p => p.hasVoted).length, total: alive.length };
 
     return {
+       gameType: this.gameType,
        roomCode: this.roomCode,
        phase: this.phase,
        players: safePlayers,
@@ -513,4 +672,4 @@ class GameRoom {
   }
 }
 
-module.exports = { GameRoom };
+module.exports = { WerewolfGame };
