@@ -8,11 +8,119 @@ import React, { useState, useEffect } from 'react';
 // what makes it feel like sitting at a board game. Self-contained: imports no
 // Werewolf component; the server owns all truth, screens only reflect it.
 export function renderSheriffPhase(ctx) {
+  return <SheriffRoot ctx={ctx} />;
+}
+
+// Wraps every Sheriff screen so a "📖 กติกา" (rules) button + modal are always
+// available, without touching the game-agnostic App shell.
+function SheriffRoot({ ctx }) {
+  const [showRules, setShowRules] = useState(false);
+  let content;
   switch (ctx.gameState.phase) {
-    case 'LOBBY':   return <SheriffLobby {...ctx} />;
-    case 'SCORING': return <ScoringScreen {...ctx} />;
-    default:        return <SheriffTable {...ctx} />;
+    case 'LOBBY':   content = <SheriffLobby {...ctx} />; break;
+    case 'SCORING': content = <ScoringScreen {...ctx} />; break;
+    default:        content = <SheriffTable {...ctx} />;
   }
+  return (
+    <>
+      {content}
+      <button onClick={() => setShowRules(true)} title="กติกาการเล่น"
+        style={{ position: 'fixed', bottom: 76, left: 20, zIndex: 999, width: 46, height: 46, borderRadius: '50%', padding: 0, margin: 0,
+          background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(212,175,55,0.5)', fontSize: '1.3rem', backdropFilter: 'blur(5px)' }}>
+        📖
+      </button>
+      {showRules && <SheriffRules goods={ctx.gameState.goods} onClose={() => setShowRules(false)} />}
+    </>
+  );
+}
+
+// How-to-play modal. Reads the goods catalog from server state so the values
+// table can never drift from the actual rules.
+function SheriffRules({ goods, onClose }) {
+  const list = goods ? Object.values(goods) : [];
+  const legal = list.filter(g => g.legal);
+  const contraband = list.filter(g => !g.legal);
+  const Section = ({ n, title, children }) => (
+    <div style={{ marginBottom: 14 }}>
+      <div className="sh-title" style={{ fontSize: '1.05rem', marginBottom: 4 }}>{n}. {title}</div>
+      <div style={{ color: '#e6dcc4', fontSize: '0.9rem', lineHeight: 1.6 }}>{children}</div>
+    </div>
+  );
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} className="sh-table" style={{ left: 'auto', transform: 'none', width: 'min(94vw, 640px)', maxHeight: '86vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <h2 className="sh-title" style={{ margin: 0 }}>📖 กติกา — ผู้ตรวจการแห่งนอตติงแฮม</h2>
+          <button onClick={onClose} style={{ width: 'auto', padding: '2px 10px', margin: 0, background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: '#fff' }}>✕</button>
+        </div>
+
+        <Section n="🎯" title="เป้าหมาย">
+          สะสม <b>ทอง + มูลค่าสินค้าในแผง + โบนัส</b> ให้มากที่สุด เมื่อจบเกมคนคะแนนรวมสูงสุดชนะ
+        </Section>
+        <Section n="👑" title="บทบาท">
+          แต่ละรอบมี <b>นายอำเภอ</b> 1 คน ที่เหลือเป็น <b>พ่อค้า</b> — ตำแหน่งนายอำเภอหมุนเวียนไปทุกคน
+          <br />จบเกมเมื่อทุกคนได้เป็นนายอำเภอ <b>คนละ 2 ครั้ง</b> (ถ้าเล่น <b>6 คน = คนละ 1 ครั้ง</b>)
+        </Section>
+
+        <div className="sh-title" style={{ fontSize: '1rem', margin: '6px 0' }}>ลำดับการเล่นแต่ละรอบ</div>
+        <Section n="🎪 ①" title="ตลาด (Market)">
+          พ่อค้าทิ้งไพ่ที่ไม่ต้องการ แล้วจั่วใหม่ให้ครบ 6 ใบ
+        </Section>
+        <Section n="📦 ②" title="ใส่ถุง (Load)">
+          พ่อค้าแอบใส่ไพ่ <b>1–5 ใบ</b> ลงถุง แล้ว <b>ประกาศ</b> ว่า “มี N [สินค้าถูกกฎหมาย]”
+          — จะพูดจริงหรือ <b>โกหกลักลอบของเถื่อน</b> ก็ได้ (คนอื่นเห็นแค่คำประกาศ ไม่เห็นของจริง)
+        </Section>
+        <Section n="🔍 ③" title="ด่านตรวจ (Inspection)">
+          นายอำเภอเลือกกับแต่ละถุง: <b>ตรวจ</b> / <b>ปล่อยผ่าน</b> / <b>รับสินบน</b> —
+          พ่อค้าเสนอสินบนหรือต่อรองผ่านแชทได้
+        </Section>
+        <Section n="⚖️ ④" title="ผลการตรวจ (Resolve)">
+          • <b>ปล่อยผ่าน/รับสินบน</b> → ของทั้งหมดเข้าแผง (ของเถื่อนก็รอด!)<br />
+          • <b>ตรวจแล้วพูดจริง</b> → นายอำเภอจ่ายค่าปรับให้พ่อค้า (ตามค่าปรับของไพ่) ของเข้าแผงหมด<br />
+          • <b>ตรวจแล้วโกหก</b> → ของที่ไม่ตรงคำประกาศถูกยึด + พ่อค้าจ่ายค่าปรับ ส่วนของที่ตรงยังเข้าแผง
+        </Section>
+        <Section n="🏆" title="นับคะแนนตอนจบ">
+          ทองที่เหลือ + มูลค่าสินค้าในแผง + <b>โบนัส King</b> (ถือสินค้าถูกกฎหมายชนิดนั้นมากสุด)
+          และ <b>Queen</b> (มากเป็นอันดับสอง)
+        </Section>
+
+        <div className="sh-title" style={{ fontSize: '1rem', margin: '10px 0 6px' }}>ตารางสินค้า</div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', color: '#e6dcc4' }}>
+            <thead>
+              <tr style={{ color: '#e8c86a', textAlign: 'left' }}>
+                <th style={{ padding: '4px 6px' }}>สินค้า</th>
+                <th style={{ padding: '4px 6px' }}>มูลค่า 💰</th>
+                <th style={{ padding: '4px 6px' }}>ค่าปรับ ⚠</th>
+                <th style={{ padding: '4px 6px' }}>โบนัส 👑/🥈</th>
+              </tr>
+            </thead>
+            <tbody>
+              {legal.map(g => (
+                <tr key={g.id} style={{ borderTop: '1px solid rgba(212,175,55,0.15)' }}>
+                  <td style={{ padding: '4px 6px' }}>{g.emoji} {g.name} <span style={{ color: '#4ade80', fontSize: '0.7rem' }}>(ถูกกฎหมาย)</span></td>
+                  <td style={{ padding: '4px 6px' }}>{g.value}</td>
+                  <td style={{ padding: '4px 6px' }}>{g.penalty}</td>
+                  <td style={{ padding: '4px 6px' }}>{g.kingBonus}/{g.queenBonus}</td>
+                </tr>
+              ))}
+              {contraband.map(g => (
+                <tr key={g.id} style={{ borderTop: '1px solid rgba(212,175,55,0.15)' }}>
+                  <td style={{ padding: '4px 6px' }}>{g.emoji} {g.name} <span style={{ color: '#f87171', fontSize: '0.7rem' }}>(ของเถื่อน)</span></td>
+                  <td style={{ padding: '4px 6px' }}>{g.value}</td>
+                  <td style={{ padding: '4px 6px' }}>{g.penalty}</td>
+                  <td style={{ padding: '4px 6px', color: '#7a6a4a' }}>—</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p style={{ color: '#8b93a7', fontSize: '0.78rem', marginTop: 10 }}>
+          เคล็ดลับ: ของเถื่อนมูลค่าสูงแต่เสี่ยงถูกปรับ — บลัฟให้เนียน หรือติดสินบนนายอำเภอเอาตัวรอด
+        </p>
+      </div>
+    </div>
+  );
 }
 
 const LEGAL_ORDER = ['apple', 'cheese', 'bread', 'chicken'];

@@ -47,7 +47,9 @@ class SheriffGame extends BaseRoom {
     });
     this.sheriffIndex = 0;
     this.round = 1;
-    this.totalRounds = this.players.length * 2; // each player is Sheriff twice
+    // Rulebook: each player is Sheriff twice — except a 6-player game, where each
+    // is Sheriff once (keeps the game to a reasonable length).
+    this.totalRounds = this.players.length === 6 ? 6 : this.players.length * 2;
     this.log = [];
     this.phase = 'MARKET';
     return true;
