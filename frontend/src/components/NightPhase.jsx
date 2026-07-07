@@ -53,8 +53,13 @@ function NightPhase({ gameState, currentPlayer, onAction, seerResult }) {
     );
   }
 
-  // My turn, but I've already confirmed — wait for the next step
-  if (currentPlayer.hasActed) {
+  const isWolf = currentPlayer.role === 'Werewolf';
+  const isCupid = currentPlayer.role === 'Cupid';
+
+  // Wolves keep coordinating even after they've picked (they can change their vote
+  // until the whole pack agrees), so they never see the "waiting" screen here.
+  // Everyone else is done the moment they confirm.
+  if (currentPlayer.hasActed && !isWolf) {
     return (
       <div className="glass-panel" style={{ textAlign: 'center' }}>
         <h1 style={{ color: '#45a29e' }}>ยืนยันการกระทำแล้ว</h1>
@@ -64,18 +69,26 @@ function NightPhase({ gameState, currentPlayer, onAction, seerResult }) {
     );
   }
 
-  // My turn to act
-  const otherAlivePlayers = gameState.players.filter(p => p.id !== currentPlayer.id && p.isAlive);
+  // Doctor may not shield the same player two nights running.
+  const blockedId = currentPlayer.role === 'Doctor' ? gameState.doctorLastProtect : null;
+
+  // Candidate list. Cupid may pick anyone incl. themselves; others exclude self
+  // (the Doctor gets a dedicated self row). Wolves never see their own pack.
+  const candidates = gameState.players.filter(p =>
+    p.isAlive &&
+    (isCupid || p.id !== currentPlayer.id) &&
+    !(isWolf && p.role === 'Werewolf')
+  );
 
   const prompt = {
-    Werewolf: 'เลือกผู้เล่นที่จะกำจัด:',
+    Werewolf: 'เลือกผู้เล่นที่จะกำจัด (ทั้งฝูงต้องเลือกตรงกัน):',
     Seer: 'เลือกผู้เล่นที่จะตรวจสอบบทบาท:',
     Doctor: 'เลือกผู้เล่นที่จะคุ้มครอง:',
-    Cupid: 'เลือกผู้เล่น 2 คนให้เป็นคู่รักกัน (ตกหลุมรัก):',
+    Cupid: 'เลือกผู้เล่น 2 คนให้เป็นคู่รักกัน (เลือกตัวเองได้):',
   }[currentPlayer.role];
 
   const handleConfirm = () => {
-    if (currentPlayer.role === 'Cupid') {
+    if (isCupid) {
       if (selectedTarget.length === 2) onAction(selectedTarget);
     } else if (selectedTarget) {
       onAction(selectedTarget);
@@ -84,30 +97,45 @@ function NightPhase({ gameState, currentPlayer, onAction, seerResult }) {
 
   return (
     <div className="glass-panel">
-      <h2 style={{ textAlign: 'center', color: currentPlayer.role === 'Werewolf' ? '#ff4b4b' : 'var(--text-highlight)' }}>
+      <h2 style={{ textAlign: 'center', color: isWolf ? '#ff4b4b' : 'var(--text-highlight)' }}>
         {icon} {roleTh} ตื่นขึ้นมา
       </h2>
 
-      {currentPlayer.role === 'Werewolf' && (
+      {isWolf && (
         <div style={{ marginBottom: '1rem', fontSize: '0.9rem', color: '#ff4b4b', textAlign: 'center' }}>
           หมาป่าคนอื่นๆ: {gameState.players.filter(p => p.role === 'Werewolf' && p.id !== currentPlayer.id && p.isAlive).map(p => p.name).join(', ') || 'ไม่มี'}
+        </div>
+      )}
+
+      {/* Live vote board — wolves converge on one victim together */}
+      {isWolf && gameState.werewolfVotes && (
+        <div style={{ marginBottom: '1rem', padding: '0.75rem', borderRadius: '8px', background: 'rgba(255,75,75,0.08)', border: '1px solid rgba(255,75,75,0.3)' }}>
+          <div style={{ fontSize: '0.8rem', color: '#ffb3b3', marginBottom: '0.5rem', textAlign: 'center' }}>🐺 การเลือกของฝูง</div>
+          {gameState.werewolfVotes.map(v => (
+            <div key={v.voterId} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#fff', padding: '2px 4px' }}>
+              <span>{v.voterName}{v.voterId === currentPlayer.id ? ' (คุณ)' : ''}</span>
+              <span style={{ color: v.targetName ? '#ff8a8a' : '#888' }}>{v.targetName ? `→ ${v.targetName}` : 'ยังไม่เลือก'}</span>
+            </div>
+          ))}
         </div>
       )}
 
       <p className="status-message">{prompt}</p>
 
       <ul className="player-list">
-        {otherAlivePlayers.map(p => {
-          const isSelected = currentPlayer.role === 'Cupid'
-            ? selectedTarget.includes(p.id)
-            : selectedTarget === p.id;
+        {candidates.map(p => {
+          const isSelected = isCupid ? selectedTarget.includes(p.id) : selectedTarget === p.id;
+          const isBlocked = p.id === blockedId;
+          const isSelf = p.id === currentPlayer.id;
 
           return (
             <li
               key={p.id}
-              className={`player-item selectable ${isSelected ? 'selected' : ''}`}
+              className={`player-item ${isBlocked ? '' : 'selectable'} ${isSelected ? 'selected' : ''}`}
+              style={isBlocked ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
               onClick={() => {
-                if (currentPlayer.role === 'Cupid') {
+                if (isBlocked) return;
+                if (isCupid) {
                   if (selectedTarget.includes(p.id)) {
                     setSelectedTarget(selectedTarget.filter(id => id !== p.id));
                   } else if (selectedTarget.length < 2) {
@@ -118,11 +146,11 @@ function NightPhase({ gameState, currentPlayer, onAction, seerResult }) {
                 }
               }}
             >
-              {p.name}
+              {p.name}{isSelf ? ' (ตัวคุณเอง)' : ''}{isBlocked ? ' — ปกป้องไปเมื่อคืน' : ''}
             </li>
           );
         })}
-        {currentPlayer.role === 'Doctor' && (
+        {currentPlayer.role === 'Doctor' && blockedId !== currentPlayer.id && (
           <li
             className={`player-item selectable ${selectedTarget === currentPlayer.id ? 'selected' : ''}`}
             onClick={() => setSelectedTarget(currentPlayer.id)}
@@ -134,11 +162,11 @@ function NightPhase({ gameState, currentPlayer, onAction, seerResult }) {
 
       <button
         style={{ marginTop: '1.5rem' }}
-        disabled={currentPlayer.role === 'Cupid' ? selectedTarget.length !== 2 : !selectedTarget}
+        disabled={isCupid ? selectedTarget.length !== 2 : !selectedTarget}
         onClick={handleConfirm}
-        className={currentPlayer.role === 'Werewolf' ? 'danger' : ''}
+        className={isWolf ? 'danger' : ''}
       >
-        ยืนยัน
+        {isWolf ? 'ยืนยัน / เปลี่ยนเป้าหมาย' : 'ยืนยัน'}
       </button>
     </div>
   );

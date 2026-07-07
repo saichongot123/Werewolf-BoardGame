@@ -58,12 +58,12 @@ export const ROLES = {
     desc: 'คืนแรกเลือกผู้เล่น 2 คนให้เป็นคู่รัก ถ้าคนหนึ่งตาย อีกคนตรอมใจตายตาม',
     goal: 'ชนะเมื่อกำจัดหมาป่าได้หมด (คู่รักชนะร่วมกันถ้าเหลือรอดเป็น 2 คนสุดท้าย)',
   },
-  LittleGirl: {
-    th: 'เด็กน้อย',
-    color: '#60a5fa',
-    faction: 'ฝ่ายชาวบ้าน',
-    desc: 'แอบดูแชตของหมาป่าตอนกลางคืนได้ แต่ชื่อคุณจะถูกซ่อน ระวังอย่าให้จับได้!',
-    goal: 'ชนะเมื่อกำจัดหมาป่าได้หมด',
+  WolfCub: {
+    th: 'ลูกหมาป่า',
+    color: '#ff7b4b',
+    faction: 'ฝ่ายหมาป่า',
+    desc: 'เล่นเหมือนหมาป่าตัวหนึ่ง (ล่าเหยื่อกับฝูง) แต่ถ้าคุณถูกฆ่า ฝูงหมาป่าจะแค้น — คืนถัดไปจะคร่าชีวิตได้ 2 คน',
+    goal: 'ชนะเมื่อจำนวนหมาป่ามากกว่าหรือเท่ากับชาวบ้านที่เหลือ',
   },
 };
 
@@ -72,5 +72,5 @@ export const getRole = (name) => ROLES[name] || ROLES.Villager;
 // Ordered list for the manual/gallery
 export const ROLE_ORDER = [
   'Werewolf', 'Seer', 'Doctor', 'Villager',
-  'Fool', 'Hunter', 'Witch', 'Cupid', 'LittleGirl',
+  'Fool', 'Hunter', 'Witch', 'Cupid', 'WolfCub',
 ];

@@ -296,7 +296,8 @@ io.on('connection', (socket) => {
               gameType: room.gameType,
               gameLabel: meta.label,
               hostName: room.getHost()?.name || 'Unknown',
-              playerCount: room.players.length
+              playerCount: room.players.length,
+              maxPlayers: meta.maxPlayers
            });
         }
      }

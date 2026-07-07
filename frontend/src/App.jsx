@@ -5,6 +5,8 @@ import ChatBox from './components/ChatBox';
 import RoleGallery from './components/RoleGallery';
 import PlayersPanel from './components/PlayersPanel';
 import GameLog from './components/GameLog';
+import RoleSetupPanel from './components/RoleSetupPanel';
+import WerewolfRules from './components/WerewolfRules';
 import GameSelect from './components/GameSelect';
 import { getGameRenderer } from './games';
 import { getRole } from './utils/roles';
@@ -72,6 +74,7 @@ function App() {
   const [createName, setCreateName] = useState('');
   const [showManual, setShowManual] = useState(false);
   const [showRoleHelp, setShowRoleHelp] = useState(false);
+  const [showRules, setShowRules] = useState(false);
   const [activePanel, setActivePanel] = useState(null); // 'players' | 'log' | null
   const previousPhaseRef = useRef(null);
   const wasMyTurnRef = useRef(false);
@@ -297,7 +300,7 @@ function App() {
                       <li key={r.roomCode} style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                          <div>
                             <strong style={{ fontSize: '1.2rem', color: 'var(--text-highlight)' }}>{r.roomCode}</strong>
-                            <span style={{ marginLeft: '1rem', color: '#ccc' }}>โดย: {r.hostName} ({r.playerCount}/10 คน)</span>
+                            <span style={{ marginLeft: '1rem', color: '#ccc' }}>โดย: {r.hostName} ({r.playerCount}/{r.maxPlayers || 10} คน)</span>
                          </div>
                          <button
                             style={{ width: 'auto', padding: '0.5rem 1rem' }}
@@ -407,20 +410,21 @@ function App() {
 
       {gameState?.phase !== 'LOBBY' && currentPlayer?.role && (
         <div onClick={() => setShowRoleHelp(true)} title="ดูรายละเอียดบทบาทของคุณ" style={{ cursor: 'pointer', position: 'fixed', top: 20, right: 20, display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(0,0,0,0.6)', padding: '8px 12px', borderRadius: '12px', zIndex: 90, border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 4px 10px rgba(0,0,0,0.3)', backdropFilter: 'blur(5px)' }}>
-           <img 
-              src={`/images/${currentPlayer.role}.png`} 
-              alt="Role" 
-              style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--accent-color)' }} 
+           <img
+              src={`/images/${currentPlayer.isCub ? 'WolfCub' : currentPlayer.role}.png`}
+              alt="Role"
+              onError={(e) => { e.target.src = '/images/Werewolf.png'; }}
+              style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--accent-color)' }}
            />
            <div style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 'bold', letterSpacing: '1px' }}>
-              {currentPlayer.role === 'Werewolf' ? 'หมาป่า' :
+              {currentPlayer.isCub ? 'ลูกหมาป่า' :
+               currentPlayer.role === 'Werewolf' ? 'หมาป่า' :
                currentPlayer.role === 'Seer' ? 'ผู้หยั่งรู้' :
-               currentPlayer.role === 'Doctor' ? 'หมอ' : 
+               currentPlayer.role === 'Doctor' ? 'หมอ' :
                currentPlayer.role === 'Fool' ? 'คนบ้า' :
-               currentPlayer.role === 'Hunter' ? 'นายพราน' : 
-               currentPlayer.role === 'Witch' ? 'แม่มด' : 
-               currentPlayer.role === 'Cupid' ? 'คิวปิด' : 
-               currentPlayer.role === 'LittleGirl' ? 'เด็กน้อย' : 'ชาวบ้าน'}
+               currentPlayer.role === 'Hunter' ? 'นายพราน' :
+               currentPlayer.role === 'Witch' ? 'แม่มด' :
+               currentPlayer.role === 'Cupid' ? 'คิวปิด' : 'ชาวบ้าน'}
            </div>
            
            {gameState.lovers && gameState.lovers.includes(currentPlayer.id) && (
@@ -491,7 +495,9 @@ function App() {
         <div style={{ position: 'fixed', bottom: 20, left: 20, zIndex: 999, display: 'flex', gap: '8px' }}>
           {[
             ...(gameState.gameType === 'werewolf' ? [
+              { key: 'rules', icon: '📖', title: 'กติกาการเล่น', onClick: () => setShowRules(true) },
               { key: 'help', icon: '❓', title: 'คู่มือบทบาท', onClick: () => setShowManual(true) },
+              { key: 'roles', icon: '🎭', title: 'บทบาทในเกมรอบนี้', onClick: () => setActivePanel(activePanel === 'roles' ? null : 'roles') },
               { key: 'players', icon: '👥', title: 'รายชื่อผู้เล่น', onClick: () => setActivePanel(activePanel === 'players' ? null : 'players') },
             ] : []),
             { key: 'log', icon: '📜', title: 'บันทึกเหตุการณ์', onClick: () => setActivePanel(activePanel === 'log' ? null : 'log') },
@@ -502,7 +508,7 @@ function App() {
               title={btn.title}
               style={{
                 width: '46px', height: '46px', borderRadius: '50%', padding: 0, margin: 0,
-                background: (btn.key === 'players' && activePanel === 'players') || (btn.key === 'log' && activePanel === 'log') ? 'var(--accent-color)' : 'rgba(0,0,0,0.6)',
+                background: (btn.key === 'roles' && activePanel === 'roles') || (btn.key === 'players' && activePanel === 'players') || (btn.key === 'log' && activePanel === 'log') ? 'var(--accent-color)' : 'rgba(0,0,0,0.6)',
                 border: '1px solid rgba(255,255,255,0.15)', fontSize: '1.3rem', backdropFilter: 'blur(5px)',
               }}
             >
@@ -536,6 +542,12 @@ function App() {
         onClose={() => setActivePanel(null)}
       />
 
+      <RoleSetupPanel
+        gameState={gameState}
+        isOpen={inGame && activePanel === 'roles'}
+        onClose={() => setActivePanel(null)}
+      />
+
       {/* In-game manual (reuses the role gallery) */}
       {showManual && (
         <div
@@ -547,6 +559,8 @@ function App() {
           </div>
         </div>
       )}
+
+      {showRules && <WerewolfRules gameState={gameState} onClose={() => setShowRules(false)} />}
 
       {/* Your-role detail popup (opened from the role badge) */}
       {showRoleHelp && currentPlayer?.role && (() => {

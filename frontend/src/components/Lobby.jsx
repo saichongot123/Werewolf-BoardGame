@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import RoleGallery from './RoleGallery';
+import { getRole } from '../utils/roles';
 
-function Lobby({ gameState, currentPlayer, onCreateRoom, onJoinRoom, onStartGame, onUpdateSettings, onKickPlayer, onFetchPublicRooms, error }) {
+function Lobby({ gameState, currentPlayer, onCreateRoom, onJoinRoom, onStartGame, onUpdateSettings, onKickPlayer, onFetchPublicRooms, onGameAction, error }) {
   const [name, setName] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
@@ -93,8 +94,56 @@ function Lobby({ gameState, currentPlayer, onCreateRoom, onJoinRoom, onStartGame
         ))}
       </ul>
 
+      {/* Role lineup preview — visible to EVERYONE, updates with count/settings */}
+      {gameState.roleSetup && gameState.roleSetup.length > 0 && (
+        <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(0,0,0,0.25)', borderRadius: '8px' }}>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-highlight)', marginBottom: '0.5rem', textAlign: 'center' }}>
+            🎭 บทบาทในเกมนี้ (ตัวอย่าง)
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'center' }}>
+            {gameState.roleSetup.map(({ role, count }) => {
+              const r = getRole(role);
+              return (
+                <span key={role} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '4px',
+                  padding: '2px 8px', borderRadius: '12px', fontSize: '0.78rem',
+                  background: 'rgba(255,255,255,0.06)', border: `1px solid ${r.color}55`, color: r.color, fontWeight: 'bold',
+                }}>
+                  {r.th} ×{count}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {currentPlayer?.isHost && onGameAction && (
+        <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center' }}>
+          <button
+            style={{ width: 'auto', padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}
+            disabled={gameState.players.length >= (gameState.maxPlayers || 10)}
+            onClick={() => onGameAction({ type: 'add_bot' })}
+          >
+            🤖 เพิ่มบอท
+          </button>
+          <button
+            className="secondary"
+            style={{ width: 'auto', padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}
+            disabled={!gameState.players.some(p => p.isBot)}
+            onClick={() => onGameAction({ type: 'remove_bot' })}
+          >
+            ลบบอท
+          </button>
+        </div>
+      )}
+      {currentPlayer?.isHost && (
+        <p style={{ textAlign: 'center', fontSize: '0.75rem', color: '#888', marginTop: '0.5rem' }}>
+          เพิ่มบอทเพื่อทดลองเล่นคนเดียวได้
+        </p>
+      )}
+
       {currentPlayer?.isHost && gameState.settings && (
-        <div style={{ marginTop: '2rem', padding: '1rem', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '8px' }}>
+        <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '8px' }}>
           <h3 style={{ marginTop: 0, fontSize: '1rem', color: 'var(--text-highlight)' }}>ตั้งค่าเกม (เฉพาะหัวหน้าห้อง)</h3>
           
           <div style={{ marginBottom: '1rem' }}>
@@ -201,18 +250,18 @@ function Lobby({ gameState, currentPlayer, onCreateRoom, onJoinRoom, onStartGame
               <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: gameState.settings.enableCupid ? '#f472b6' : '#aaa' }}>คิวปิด (Cupid)</span>
             </div>
 
-            <div 
-              onClick={() => onUpdateSettings({ enableLittleGirl: !gameState.settings.enableLittleGirl })}
+            <div
+              onClick={() => onUpdateSettings({ enableWolfCub: !gameState.settings.enableWolfCub })}
               style={{
                 cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                 padding: '1rem', borderRadius: '12px',
-                background: gameState.settings.enableLittleGirl ? 'rgba(96, 165, 250, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                border: `2px solid ${gameState.settings.enableLittleGirl ? '#60a5fa' : 'transparent'}`,
+                background: gameState.settings.enableWolfCub ? 'rgba(255, 123, 75, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                border: `2px solid ${gameState.settings.enableWolfCub ? '#ff7b4b' : 'transparent'}`,
                 transition: 'all 0.3s ease', width: '120px', textAlign: 'center'
               }}
             >
-              <img src="/images/LittleGirl.png" alt="LittleGirl" style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', marginBottom: '0.5rem', filter: gameState.settings.enableLittleGirl ? 'none' : 'grayscale(80%)' }} />
-              <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: gameState.settings.enableLittleGirl ? '#60a5fa' : '#aaa' }}>เด็กน้อย</span>
+              <img src="/images/WolfCub.png" alt="WolfCub" onError={(e) => { e.target.src = '/images/Werewolf.png'; }} style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', marginBottom: '0.5rem', filter: gameState.settings.enableWolfCub ? 'none' : 'grayscale(80%)' }} />
+              <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: gameState.settings.enableWolfCub ? '#ff7b4b' : '#aaa' }}>ลูกหมาป่า</span>
             </div>
           </div>
         </div>
@@ -225,7 +274,7 @@ function Lobby({ gameState, currentPlayer, onCreateRoom, onJoinRoom, onStartGame
             disabled={gameState.players.length < 4}
             className={gameState.players.length < 4 ? '' : 'danger'}
           >
-            เริ่มเกม ({gameState.players.length}/10)
+            เริ่มเกม ({gameState.players.length}/{gameState.maxPlayers || 10})
           </button>
         ) : (
           <p style={{textAlign: 'center', color: '#666'}}>รอหัวหน้าห้องเริ่มเกม...</p>

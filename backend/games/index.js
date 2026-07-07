@@ -9,7 +9,7 @@ const GAMES = {
   werewolf: {
     label: 'มนุษย์หมาป่า',
     minPlayers: 4,
-    maxPlayers: 10,
+    maxPlayers: 16,
     create: (roomCode) => new WerewolfGame(roomCode),
   },
   sheriff: {
@@ -24,7 +24,12 @@ const DEFAULT_GAME = 'werewolf';
 
 function createGame(gameType, roomCode) {
   const def = GAMES[gameType] || GAMES[DEFAULT_GAME];
-  return def.create(roomCode);
+  const game = def.create(roomCode);
+  // Stamp the roster limits onto the instance so the game (and its getState) can
+  // enforce/report them without importing this registry (avoids a require cycle).
+  game.maxPlayers = def.maxPlayers;
+  game.minPlayers = def.minPlayers;
+  return game;
 }
 
 function gameMeta(gameType) {

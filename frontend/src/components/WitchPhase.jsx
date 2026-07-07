@@ -38,19 +38,40 @@ function WitchPhase({ gameState, currentPlayer, onWitchAction }) {
       <h2 style={{ textAlign: 'center', color: '#4ade80' }}>แม่มด ตื่นขึ้นมา</h2>
       
       {victim ? (
-         <div style={{ marginBottom: '1.5rem', padding: '1rem', background: 'rgba(255, 75, 75, 0.1)', border: '1px solid #ff4b4b', borderRadius: '8px', textAlign: 'center' }}>
-            <p style={{ margin: '0 0 0.5rem 0', color: '#ff4b4b' }}>คืนนี้ <strong>{victim.name}</strong> ถูกหมาป่าทำร้าย!</p>
+         <div style={{ marginBottom: '1.25rem', padding: '1rem', background: 'rgba(255, 75, 75, 0.1)', border: '1px solid #ff4b4b', borderRadius: '8px', textAlign: 'center' }}>
+            <p style={{ margin: '0 0 0.75rem 0', color: '#ff4b4b' }}>คืนนี้ <strong>{victim.name}</strong> ถูกหมาป่าทำร้าย!</p>
             {witchPotions?.heal ? (
-               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                 <input type="checkbox" checked={selectedHeal} onChange={(e) => setSelectedHeal(e.target.checked)} />
-                 ใช้ยาชุบชีวิต 🧪 (เหลือ 1 ขวด)
-               </label>
+               <div
+                 onClick={() => setSelectedHeal(!selectedHeal)}
+                 style={{
+                   cursor: 'pointer', userSelect: 'none',
+                   display: 'flex', alignItems: 'center', gap: '0.75rem',
+                   padding: '0.85rem 1rem', borderRadius: '10px',
+                   background: selectedHeal ? 'rgba(74, 222, 128, 0.25)' : 'rgba(255,255,255,0.06)',
+                   border: `2px solid ${selectedHeal ? '#4ade80' : 'rgba(255,255,255,0.2)'}`,
+                   transition: 'all 0.2s ease',
+                 }}
+               >
+                 <span style={{
+                   width: '26px', height: '26px', flexShrink: 0, borderRadius: '6px',
+                   display: 'flex', alignItems: 'center', justifyContent: 'center',
+                   background: selectedHeal ? '#4ade80' : 'transparent',
+                   border: `2px solid ${selectedHeal ? '#4ade80' : '#888'}`,
+                   color: '#0b1a0f', fontWeight: 'bold', fontSize: '1rem',
+                 }}>{selectedHeal ? '✓' : ''}</span>
+                 <span style={{ textAlign: 'left', color: selectedHeal ? '#86efac' : '#ddd', fontWeight: 'bold' }}>
+                   🧪 {selectedHeal ? `จะใช้ยาชุบชีวิตช่วย ${victim.name}` : `แตะเพื่อใช้ยาชุบชีวิตช่วย ${victim.name}`}
+                   <span style={{ display: 'block', fontSize: '0.72rem', fontWeight: 'normal', color: '#aaa', marginTop: '2px' }}>
+                     (มียาชุบชีวิตเหลือ 1 ขวด — ใช้ได้ครั้งเดียวทั้งเกม)
+                   </span>
+                 </span>
+               </div>
             ) : (
                <p style={{ margin: 0, fontSize: '0.8rem', color: '#666' }}>(คุณไม่มียาชุบชีวิตเหลือแล้ว)</p>
             )}
          </div>
       ) : (
-         <div style={{ marginBottom: '1.5rem', textAlign: 'center', color: '#aaa' }}>
+         <div style={{ marginBottom: '1.25rem', textAlign: 'center', color: '#aaa' }}>
             <p>คืนนี้ไม่มีใครถูกหมาป่าทำร้าย (หรือหมออาจจะช่วยไว้แล้ว)</p>
          </div>
       )}
@@ -80,11 +101,14 @@ function WitchPhase({ gameState, currentPlayer, onWitchAction }) {
          <p style={{ textAlign: 'center', fontSize: '0.8rem', color: '#666' }}>(คุณไม่มียาพิษเหลือแล้ว)</p>
       )}
       
-      <button 
-        style={{ marginTop: '1.5rem' }} 
+      <button
+        style={{ marginTop: '1.5rem', background: (selectedHeal || selectedPoison) ? '#4ade80' : undefined, color: (selectedHeal || selectedPoison) ? '#0b1a0f' : undefined, fontWeight: 'bold' }}
         onClick={handleConfirm}
       >
-        ยืนยันการใช้ยา
+        {selectedHeal && selectedPoison ? 'ยืนยัน: ชุบชีวิต + ใช้ยาพิษ'
+          : selectedHeal ? 'ยืนยัน: ใช้ยาชุบชีวิต'
+          : selectedPoison ? 'ยืนยัน: ใช้ยาพิษ'
+          : 'ผ่าน (ไม่ใช้ยา)'}
       </button>
     </div>
   );

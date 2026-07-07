@@ -51,10 +51,10 @@ function RoleGallery({ onBack }) {
       color: '#f472b6'
     },
     {
-      name: 'LittleGirl',
-      description: 'เด็กน้อย: สามารถแอบฟังแชทของหมาป่าตอนกลางคืนได้ แต่ชื่อของคุณจะถูกซ่อนไว้ (Anonymous) ระวังอย่าให้หมาป่าจับได้!',
-      alignment: 'Good',
-      color: '#60a5fa'
+      name: 'WolfCub',
+      description: 'ลูกหมาป่า: เป็นหมาป่าตัวหนึ่ง ล่าเหยื่อกับฝูงตามปกติ แต่ถ้าลูกหมาป่าถูกฆ่า ฝูงจะแค้น — คืนถัดไปหมาป่าจะคร่าชีวิตได้ 2 คน',
+      alignment: 'Bad',
+      color: '#ff7b4b'
     }
   ];
 
@@ -69,10 +69,11 @@ function RoleGallery({ onBack }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', maxHeight: '60vh', overflowY: 'auto', paddingRight: '1rem' }}>
         {roles.map((role) => (
           <div key={role.name} style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', padding: '1rem', borderRadius: '12px' }}>
-            <img 
-              src={`/images/${role.name}.png`} 
-              alt={role.name} 
-              style={{ width: '100px', height: '100px', borderRadius: '8px', objectFit: 'cover', boxShadow: '0 4px 10px rgba(0,0,0,0.5)', flexShrink: 0 }} 
+            <img
+              src={`/images/${role.name}.png`}
+              alt={role.name}
+              onError={(e) => { e.target.src = '/images/Werewolf.png'; }}
+              style={{ width: '100px', height: '100px', borderRadius: '8px', objectFit: 'cover', boxShadow: '0 4px 10px rgba(0,0,0,0.5)', flexShrink: 0 }}
             />
             <div>
               <h3 style={{ margin: '0 0 0.5rem 0', color: role.color }}>{role.name}</h3>

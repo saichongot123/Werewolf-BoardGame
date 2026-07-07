@@ -1,12 +1,8 @@
 import React from 'react';
 import Lobby from '../components/Lobby';
 import RoleView from '../components/RoleView';
-import NightPhase from '../components/NightPhase';
-import WitchPhase from '../components/WitchPhase';
-import DayPhase from '../components/DayPhase';
-import VotingPhase from '../components/VotingPhase';
-import HunterPhase from '../components/HunterPhase';
 import EndGame from '../components/EndGame';
+import WerewolfTable from './werewolfTable';
 
 // Renders the correct Werewolf screen for the current phase.
 // `ctx` is the bundle of state + handlers that App.jsx passes down — this keeps
@@ -17,7 +13,7 @@ export function renderWerewolfPhase(ctx) {
     seerResult, nightResult, voteResult,
     onStartGame, onUpdateSettings, onKickPlayer,
     onNightAction, onWitchAction, onHunterAction,
-    onVote, onStartVoting, onPlayAgain,
+    onVote, onStartVoting, onPlayAgain, onGameAction,
   } = ctx;
 
   switch (gameState.phase) {
@@ -28,42 +24,30 @@ export function renderWerewolfPhase(ctx) {
                 onStartGame={onStartGame}
                 onUpdateSettings={onUpdateSettings}
                 onKickPlayer={onKickPlayer}
+                onGameAction={onGameAction}
                 error={error}
              />;
     case 'ROLE_VIEW':
-      return <RoleView player={currentPlayer} />;
+      return <RoleView player={currentPlayer} players={gameState.players} />;
+    // In-game phases share the immersive "village circle" table. It reuses the
+    // phase components (NightPhase/WitchPhase/VotingPhase/HunterPhase) as its
+    // bottom action dock, so all game logic still lives in those components.
     case 'NIGHT':
-      return <NightPhase
-                gameState={gameState}
-                currentPlayer={currentPlayer}
-                onAction={onNightAction}
-                seerResult={seerResult}
-             />;
     case 'NIGHT_WITCH':
-      return <WitchPhase
-                gameState={gameState}
-                currentPlayer={currentPlayer}
-                onWitchAction={onWitchAction}
-             />;
     case 'DAY':
-      return <DayPhase
-                gameState={gameState}
-                currentPlayer={currentPlayer}
-                nightResult={nightResult}
-                onStartVoting={onStartVoting}
-                voteResult={voteResult}
-             />;
     case 'VOTING':
-      return <VotingPhase
-                gameState={gameState}
-                currentPlayer={currentPlayer}
-                onVote={onVote}
-             />;
     case 'HUNTER_REVENGE':
-      return <HunterPhase
+      return <WerewolfTable
                 gameState={gameState}
                 currentPlayer={currentPlayer}
+                onNightAction={onNightAction}
+                onWitchAction={onWitchAction}
+                onVote={onVote}
                 onHunterAction={onHunterAction}
+                onStartVoting={onStartVoting}
+                seerResult={seerResult}
+                nightResult={nightResult}
+                voteResult={voteResult}
              />;
     case 'END_GAME':
       return <EndGame

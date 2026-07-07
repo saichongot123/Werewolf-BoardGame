@@ -355,3 +355,212 @@ button.secondary {
   border: 1px solid #a97c34;
   box-shadow: 0 1px 3px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.6);
 }
+
+/* ══════════ Werewolf village-circle table (phases A–D) ══════════ */
+.ww-board {
+  position: relative;
+  width: min(94vw, 980px);
+  left: 50%; transform: translateX(-50%);
+  padding: 14px 16px 18px; border-radius: 18px;
+  border: 2px solid #5a4327;
+  box-shadow: inset 0 0 70px rgba(0,0,0,0.55), inset 0 0 0 2px rgba(212,175,55,0.12), 0 16px 48px rgba(0,0,0,0.55);
+  /* Base layer = warm DUSK (day/voting). Night is an overlay that cross-fades in.
+     Optional /images/werewolf/day-sky.png sits on top; absent → paints nothing. */
+  background:
+    url('/images/werewolf/day-sky.png'),
+    radial-gradient(ellipse at 50% 14%, rgba(255,201,120,0.32), transparent 56%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.5), transparent 55%),
+    linear-gradient(180deg, #402f1c, #1d140c);
+  background-size: cover, auto, auto, auto;
+  background-blend-mode: overlay, normal, normal, normal;
+  transition: border-color 1.2s ease;
+}
+.ww-board.ww-night { border-color: #2c3550; }
+/* Night overlay: deep-blue sky sprinkled with stars, faded in over the dusk base.
+   Optional /images/werewolf/night-sky.png sits on top of the star gradients. */
+.ww-board::before {
+  content: ''; position: absolute; inset: 0; border-radius: 18px; pointer-events: none;
+  background:
+    url('/images/werewolf/night-sky.png'),
+    radial-gradient(1.4px 1.4px at 12% 22%, #fff, transparent),
+    radial-gradient(1.4px 1.4px at 28% 12%, #dfe7ff, transparent),
+    radial-gradient(1.2px 1.2px at 46% 26%, #fff, transparent),
+    radial-gradient(1.6px 1.6px at 66% 14%, #cfe0ff, transparent),
+    radial-gradient(1.2px 1.2px at 82% 24%, #fff, transparent),
+    radial-gradient(1.4px 1.4px at 90% 40%, #dfe7ff, transparent),
+    radial-gradient(1.2px 1.2px at 8% 52%, #fff, transparent),
+    radial-gradient(1.3px 1.3px at 36% 60%, #fff, transparent),
+    radial-gradient(ellipse at 50% 26%, rgba(74,100,160,0.45), transparent 60%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55), transparent 55%),
+    linear-gradient(180deg, #141d33, #090c15);
+  background-size: cover, auto, auto, auto, auto, auto, auto, auto, auto, auto, auto, auto;
+  opacity: 0; transition: opacity 1.2s ease;
+}
+.ww-board.ww-night::before { opacity: 1; }
+/* Central hearth: a campfire (night) / village well (day) grounds the circle.
+   Optional art layers over an always-present glow, so it looks good with no image. */
+.ww-hearth {
+  position: absolute; left: 50%; top: 50%; width: 210px; height: 210px;
+  transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none; z-index: 0;
+  background: radial-gradient(circle, rgba(255,170,60,0.16), transparent 68%);
+}
+.ww-night .ww-hearth {
+  background:
+    url('/images/werewolf/campfire.png') center/contain no-repeat,
+    radial-gradient(circle, rgba(255,140,45,0.22), transparent 66%);
+  animation: wwFlicker 3.5s ease-in-out infinite;
+}
+.ww-day .ww-hearth {
+  background:
+    url('/images/werewolf/well.png') center/contain no-repeat,
+    radial-gradient(circle, rgba(255,210,120,0.14), transparent 68%);
+}
+@keyframes wwFlicker { 0%, 100% { opacity: 0.85; } 45% { opacity: 1; } 70% { opacity: 0.78; } }
+/* Readability scrim + vignette. Sits ABOVE the background image but BELOW the
+   seats/text (ring has z-index:1), so it mutes any busy backdrop and keeps light
+   text legible — works with whatever sky image the user drops in. */
+.ww-board::after {
+  content: ''; position: absolute; inset: 0; border-radius: 18px; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 42%, rgba(0,0,0,0.18), rgba(0,0,0,0.34) 72%, rgba(0,0,0,0.52));
+  box-shadow: inset 0 0 120px rgba(0,0,0,0.5);
+}
+/* The seat ring: seats are absolutely positioned around this box */
+.ww-ring { position: relative; height: 50vh; min-height: 360px; max-height: 560px; z-index: 1; }
+/* faint inner ellipse that visually connects the seats into a "village square" */
+.ww-ring::before {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 62%; height: 58%;
+  transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none; z-index: 0;
+  border: 1px solid rgba(212,175,55,0.14);
+  box-shadow: inset 0 0 50px rgba(0,0,0,0.35);
+}
+.ww-seat-wrap { position: absolute; width: 84px; }
+.ww-seat {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  transition: opacity 0.5s ease, filter 0.5s ease;
+  animation: wwSeatIn 0.45s cubic-bezier(0.2,0.9,0.3,1) both;
+}
+.ww-seat.is-dead { opacity: 0.38; filter: grayscale(95%); }
+.ww-avatar {
+  position: relative; width: 58px; height: 58px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; overflow: visible;
+  background: radial-gradient(circle at 40% 32%, #524b6a, #241f30);
+  border: 2px solid #8079a0;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.55), 0 0 0 4px rgba(0,0,0,0.28), inset 0 2px 4px rgba(255,255,255,0.12);
+  transition: border-color 0.4s ease, box-shadow 0.4s ease, transform 0.2s ease;
+}
+.ww-seat.is-me .ww-avatar { border-color: #e8c86a; box-shadow: 0 0 14px rgba(212,175,55,0.55); }
+.ww-seat.is-acting .ww-avatar { border-color: #ffd970; animation: wwPulse 1.4s ease-in-out infinite; }
+.ww-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.ww-avatar-fallback { font-size: 1.6rem; }
+.ww-skull {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 1.7rem; text-shadow: 0 0 6px #000;
+}
+.ww-voted {
+  position: absolute; right: -4px; bottom: -4px; width: 20px; height: 20px;
+  border-radius: 50%; background: #4ade80; color: #10131d; font-weight: bold;
+  font-size: 0.8rem; display: flex; align-items: center; justify-content: center;
+  border: 2px solid #10131d; animation: wwPop 0.3s cubic-bezier(0.2,1.6,0.4,1) both;
+}
+/* corner badges (host / wolf pack / lover) */
+.ww-badge {
+  position: absolute; width: 20px; height: 20px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 0.66rem;
+  border: 1px solid rgba(0,0,0,0.55); box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+.ww-badge-host { top: -6px; left: -6px; background: rgba(20,20,30,0.8); }
+.ww-badge-wolf { top: -6px; right: -6px; background: rgba(130,26,26,0.9); }
+.ww-badge-lover { bottom: -4px; left: -4px; background: rgba(170,44,96,0.9); }
+.ww-name {
+  font-size: 0.74rem; color: #eef2fb; max-width: 88px; line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 2px 8px; border-radius: 7px;
+  background: linear-gradient(180deg, rgba(20,24,38,0.95), rgba(8,10,18,0.95));
+  border: 1px solid rgba(212,175,55,0.25);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.9);
+}
+.ww-seat.is-me .ww-name { border-color: rgba(232,200,106,0.6); color: #ffe9a8; }
+/* Central stage — sits on a soft dark halo so text stays readable over any art */
+.ww-center {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  text-align: center; width: 62%; max-width: 340px; pointer-events: none;
+  padding: 14px 18px; border-radius: 20px;
+  background: radial-gradient(ellipse at 50% 45%, rgba(8,10,18,0.72), rgba(8,10,18,0.35) 68%, transparent 85%);
+}
+.ww-moon, .ww-sun { font-size: 2.8rem; }
+.ww-moon { filter: drop-shadow(0 0 14px rgba(180,200,255,0.5)); animation: wwFloat 4s ease-in-out infinite; }
+.ww-sun { filter: drop-shadow(0 0 14px rgba(255,200,90,0.5)); animation: wwGlow 3s ease-in-out infinite; }
+.ww-center-title {
+  font-family: var(--font-serif, Georgia, serif);
+  font-size: 1.45rem; color: #f6f8fd; margin-top: 4px;
+  text-shadow: 0 1px 2px #000, 0 2px 10px rgba(0,0,0,0.95);
+}
+.ww-center-sub { font-size: 0.98rem; color: #d8e0f0; margin-top: 4px; text-shadow: 0 1px 2px #000, 0 1px 6px rgba(0,0,0,0.9); }
+.ww-center-note { font-size: 0.8rem; color: #aab4d0; margin-top: 8px; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+/* Bottom action dock */
+.ww-dock { margin-top: 10px; min-height: 56px; position: relative; z-index: 2; }
+.ww-dock .glass-panel { margin: 0; animation: wwSlideIn 0.32s ease both; }
+.ww-dock-hint {
+  text-align: center; color: #9aa6c4; font-size: 0.92rem;
+  padding: 16px; background: rgba(0,0,0,0.3); border-radius: 12px;
+}
+.ww-dock-btn { max-width: 320px; margin: 0 auto; display: block; }
+
+@keyframes wwSeatIn { from { opacity: 0; transform: scale(0.7); } to { opacity: 1; transform: none; } }
+@keyframes wwPulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(255,217,112,0.5); }
+  50% { box-shadow: 0 0 24px rgba(255,217,112,0.95); }
+}
+@keyframes wwFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes wwGlow {
+  0%, 100% { filter: drop-shadow(0 0 10px rgba(255,200,90,0.4)); }
+  50% { filter: drop-shadow(0 0 24px rgba(255,200,90,0.85)); }
+}
+@keyframes wwPop { from { opacity: 0; transform: scale(0); } to { opacity: 1; transform: none; } }
+@keyframes wwSlideIn { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+
+/* crowded table (>12 players): shrink seats so the ring doesn't overlap */
+.ww-crowded .ww-seat-wrap { width: 64px; }
+.ww-crowded .ww-avatar { width: 44px; height: 44px; }
+.ww-crowded .ww-avatar-fallback { font-size: 1.2rem; }
+.ww-crowded .ww-name { font-size: 0.62rem; max-width: 66px; padding: 1px 5px; }
+.ww-crowded .ww-badge { width: 16px; height: 16px; font-size: 0.55rem; }
+.ww-crowded .ww-tally { min-width: 18px; height: 18px; font-size: 0.68rem; }
+
+/* clickable seats (targeting) */
+.ww-seat.is-selectable { cursor: pointer; }
+.ww-seat.is-selectable .ww-avatar { border-color: #7ea8ff; box-shadow: 0 0 10px rgba(126,168,255,0.5); }
+.ww-seat.is-selectable:hover .ww-avatar { border-color: #b6d0ff; box-shadow: 0 0 16px rgba(126,168,255,0.8); transform: scale(1.06); }
+.ww-seat.is-selected .ww-avatar {
+  border-color: #ff5b5b !important;
+  box-shadow: 0 0 0 3px rgba(255,91,91,0.5), 0 0 18px rgba(255,91,91,0.7) !important;
+}
+/* vote tally badge on a seat */
+.ww-tally {
+  position: absolute; top: -8px; right: -8px; min-width: 22px; height: 22px; padding: 0 4px;
+  border-radius: 11px; background: #46506e; color: #fff; font-weight: bold; font-size: 0.8rem;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid #10131d; box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+  animation: wwPop 0.3s cubic-bezier(0.2,1.6,0.4,1) both;
+}
+.ww-tally.is-leader { background: #d63030; box-shadow: 0 0 12px rgba(214,48,48,0.85); }
+/* dock action bar */
+.ww-actionbar {
+  background: rgba(0,0,0,0.34); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px; padding: 12px 14px; animation: wwSlideIn 0.3s ease both;
+}
+.ww-prompt { text-align: center; color: #e8eefc; font-size: 0.98rem; margin: 4px 0 10px; }
+.ww-prompt-count { color: #ffd970; font-weight: bold; }
+.ww-actionbar-btns { display: flex; gap: 10px; justify-content: center; }
+.ww-actionbar-btns button { width: auto; min-width: 130px; margin: 0; }
+.ww-pack {
+  background: rgba(255,75,75,0.08); border: 1px solid rgba(255,75,75,0.3);
+  border-radius: 8px; padding: 8px 10px; margin-bottom: 10px;
+}
+.ww-pack-title { font-size: 0.8rem; color: #ffb3b3; text-align: center; margin-bottom: 4px; }
+.ww-pack-row { display: flex; justify-content: space-between; font-size: 0.85rem; color: #fff; padding: 1px 2px; }
+.ww-seer-card {
+  text-align: center; padding: 10px; margin-bottom: 10px; border-radius: 8px;
+  background: rgba(69,160,158,0.12); border: 1px solid rgba(69,160,158,0.5); color: #e8eefc;
+}
