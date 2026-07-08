@@ -52,8 +52,10 @@ function getTargeting(gameState, me) {
     }
     return null;
   }
-  if (phase === 'VOTING' && me.isAlive && !me.hasVoted) {
-    return { role: 'Vote', count: 1, prompt: 'คลิกโหวตผู้ที่สงสัย หรือกดข้าม',
+  if (phase === 'VOTING' && me.isAlive) {
+    // Vote stays open — players can change their pick until the host closes it.
+    return { role: 'Vote', count: 1,
+      prompt: me.hasVoted ? 'เปลี่ยนโหวตได้ (คลิกคนใหม่ หรือกดข้าม)' : 'คลิกโหวตผู้ที่สงสัย หรือกดข้าม',
       valid: p => p.isAlive };
   }
   if (phase === 'HUNTER_REVENGE' && me.id === gameState.pendingHunter) {
@@ -144,8 +146,8 @@ function CenterStage({ gameState, nightResult }) {
       <div className="ww-center">
         <div className="ww-sun">⚖️</div>
         <div className="ww-center-title">ลงคะแนนเสียง</div>
-        <div className="ww-center-sub">คลิกที่คนในวงเพื่อโหวต</div>
-        {voteProgress && <div className="ww-center-note">โหวตแล้ว {voteProgress.done}/{voteProgress.total}</div>}
+        <div className="ww-center-sub">คลิกที่คนในวงเพื่อโหวต (เปลี่ยนได้)</div>
+        {voteProgress && <div className="ww-center-note">ลงคะแนนแล้ว {voteProgress.done}/{voteProgress.total} • รอหัวหน้าห้องปิดโหวต</div>}
       </div>
     );
   }
@@ -164,8 +166,21 @@ function CenterStage({ gameState, nightResult }) {
 // The dock is now a slim confirm bar: the picking happens on the seats. It also
 // hosts the role-specific extras (werewolf live board, seer result, skip button)
 // and the Witch's full panel.
-function Dock({ gameState, me, targeting, sel, seerResult, onNightAction, onVote, onHunterAction, onWitchAction, onStartVoting }) {
+function Dock({ gameState, me, targeting, sel, seerResult, onNightAction, onVote, onHunterAction, onWitchAction, onStartVoting, onGameAction }) {
   const { phase } = gameState;
+
+  // Host can close the day vote at any point to resolve it immediately (after the
+  // table has agreed), even if not everyone has clicked. Shown regardless of the
+  // host's own vote state.
+  const closeVoteBtn = phase === 'VOTING' && me?.isHost && onGameAction ? (
+    <button
+      className="ww-dock-btn"
+      style={{ background: '#e8c86a', color: '#2a1c08', fontWeight: 'bold', marginTop: '8px' }}
+      onClick={() => { if (window.confirm('ปิดโหวตและสรุปผลเลยไหม? (ปิดแล้วจะประหารตามคะแนนทันที)')) onGameAction({ type: 'close_vote' }); }}
+    >
+      🔒 ปิดโหวต & สรุปผล (หัวหน้าห้อง)
+    </button>
+  ) : null;
 
   // Witch keeps her own two-potion panel.
   if (phase === 'NIGHT_WITCH') {
@@ -199,7 +214,7 @@ function Dock({ gameState, me, targeting, sel, seerResult, onNightAction, onVote
       else if (phase === 'VOTING') hint = 'โหวตแล้ว รอผู้เล่นคนอื่น...';
       else if (phase === 'HUNTER_REVENGE') hint = 'รอการแก้แค้นของนายพราน...';
     }
-    return <>{seerCard}<div className="ww-dock-hint">{hint}</div></>;
+    return <>{seerCard}<div className="ww-dock-hint">{hint}</div>{closeVoteBtn}</>;
   }
 
   const ready = targeting.count === 2 ? sel.length === 2 : !!sel;
@@ -240,11 +255,12 @@ function Dock({ gameState, me, targeting, sel, seerResult, onNightAction, onVote
         )}
         <button className="danger" disabled={!ready} onClick={confirm}>
           {targeting.role === 'Werewolf' ? 'ยืนยัน / เปลี่ยนเป้า'
-            : targeting.role === 'Vote' ? 'ยืนยันโหวต'
+            : targeting.role === 'Vote' ? 'ยืนยัน / เปลี่ยนโหวต'
             : targeting.role === 'Hunter' ? 'ลั่นไกปืน'
             : 'ยืนยัน'}
         </button>
       </div>
+      {closeVoteBtn}
     </div>
   );
 }
@@ -306,7 +322,7 @@ export default function WerewolfTable(props) {
               seerResult={props.seerResult}
               onNightAction={props.onNightAction} onVote={props.onVote}
               onHunterAction={props.onHunterAction} onWitchAction={props.onWitchAction}
-              onStartVoting={props.onStartVoting} />
+              onStartVoting={props.onStartVoting} onGameAction={props.onGameAction} />
       </div>
     </div>
   );

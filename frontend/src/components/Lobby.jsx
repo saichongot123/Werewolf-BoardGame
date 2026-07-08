@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import RoleGallery from './RoleGallery';
 import { getRole } from '../utils/roles';
 
-function Lobby({ gameState, currentPlayer, onCreateRoom, onJoinRoom, onStartGame, onUpdateSettings, onKickPlayer, onFetchPublicRooms, onGameAction, error }) {
+function Lobby({ gameState, currentPlayer, onCreateRoom, onJoinRoom, onStartGame, onUpdateSettings, onKickPlayer, onFetchPublicRooms, onGameAction, onRejoin, rejoinCode, error }) {
   const [name, setName] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
@@ -18,7 +18,18 @@ function Lobby({ gameState, currentPlayer, onCreateRoom, onJoinRoom, onStartGame
       <div className="glass-panel">
         <h1>เกมมนุษย์หมาป่า</h1>
         <p className="status-message">เกมแห่งการหลอกลวงและการเอาชีวิตรอด</p>
-        
+
+        {rejoinCode && onRejoin && (
+          <div style={{ marginBottom: '1rem', padding: '0.9rem', borderRadius: '12px', background: 'rgba(69,160,158,0.15)', border: '1px solid var(--accent-color)', textAlign: 'center' }}>
+            <p style={{ margin: '0 0 0.6rem', fontSize: '0.9rem', color: '#c8d2e8' }}>
+              คุณมีเกมที่ค้างอยู่ (ห้อง <strong style={{ color: '#fff', letterSpacing: '2px' }}>{rejoinCode}</strong>)
+            </p>
+            <button onClick={onRejoin} style={{ background: 'var(--accent-color)', fontWeight: 'bold' }}>
+              🔙 กลับเข้าเกมเดิม
+            </button>
+          </div>
+        )}
+
         {error && <p style={{color: '#ff4b4b', marginBottom: '1rem', textAlign: 'center'}}>{error}</p>}
         
         <input 
@@ -114,6 +125,24 @@ function Lobby({ gameState, currentPlayer, onCreateRoom, onJoinRoom, onStartGame
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Balance advisory — warns (does NOT block) when the set-up would deal a
+          degenerate game: roles dropped for lack of seats, or zero villagers. */}
+      {gameState.balanceWarnings && gameState.balanceWarnings.length > 0 && (
+        <div style={{
+          marginTop: '0.75rem', padding: '0.75rem 0.9rem', borderRadius: '8px',
+          background: 'rgba(220, 160, 40, 0.14)', border: '1px solid rgba(220, 160, 40, 0.55)',
+        }}>
+          <div style={{ fontSize: '0.82rem', color: '#f0c060', fontWeight: 'bold', marginBottom: '0.35rem' }}>
+            ⚠️ สมดุลบทบาท
+          </div>
+          <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '0.78rem', color: '#e8d9b0', lineHeight: 1.5 }}>
+            {gameState.balanceWarnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
         </div>
       )}
 

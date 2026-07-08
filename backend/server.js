@@ -269,17 +269,28 @@ io.on('connection', (socket) => {
     if (!player) return;
 
     const wasHost = player.isHost;
-    room.removePlayer(player.id);
     socket.leave(roomCode);
+
+    if (room.phase === 'LOBBY') {
+      // Not started yet — the player is uncommitted, so remove them entirely.
+      room.removePlayer(player.id);
+    } else {
+      // Game in progress — KEEP their slot so they can rejoin (mark them "away").
+      // The room timer keeps the game moving; reconnect_player reattaches them.
+      player.socketId = null;
+    }
 
     const humans = room.players.filter(p => !p.isBot);
     if (humans.length === 0) {
-      // No humans left (empty, or only bots) — tear the room down.
+      // No human records at all (only bots / empty) — tear the room down.
       stopRoomTimer(roomCode);
       rooms.delete(roomCode);
     } else {
       if (wasHost) {
-        humans[0].isHost = true; // hand host to a human, never a bot
+        // Hand host to a still-connected human if there is one; otherwise keep it
+        // on the leaver (they're away but will get it back when they return).
+        const heir = humans.find(p => p.id !== player.id && p.socketId);
+        if (heir) { player.isHost = false; heir.isHost = true; }
       }
       broadcastGameState(room);
     }

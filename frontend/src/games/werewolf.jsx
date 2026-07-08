@@ -45,6 +45,7 @@ export function renderWerewolfPhase(ctx) {
                 onVote={onVote}
                 onHunterAction={onHunterAction}
                 onStartVoting={onStartVoting}
+                onGameAction={onGameAction}
                 seerResult={seerResult}
                 nightResult={nightResult}
                 voteResult={voteResult}

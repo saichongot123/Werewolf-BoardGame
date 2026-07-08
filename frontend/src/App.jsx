@@ -75,6 +75,10 @@ function App() {
   const [showManual, setShowManual] = useState(false);
   const [showRoleHelp, setShowRoleHelp] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  // Room code of an in-progress game the player stepped out of but can rejoin.
+  const [rejoinCode, setRejoinCode] = useState(() => {
+    return sessionStorage.getItem('werewolf_roomCode') || null;
+  });
   const [activePanel, setActivePanel] = useState(null); // 'players' | 'log' | null
   const previousPhaseRef = useRef(null);
   const wasMyTurnRef = useRef(false);
@@ -99,9 +103,11 @@ function App() {
         if (response.success) {
           setPlayerId(response.playerId);
           setGameState(response.gameState);
+          setRejoinCode(null);
         } else {
           sessionStorage.removeItem('werewolf_playerId');
           sessionStorage.removeItem('werewolf_roomCode');
+          setRejoinCode(null);
         }
       });
     }
@@ -251,6 +257,13 @@ function App() {
   };
 
   const handleLeaveRoom = () => {
+    const inProgress = gameState && gameState.phase !== 'LOBBY';
+    // Leaving a game in progress is reversible — warn, then keep the session so
+    // the player can rejoin. Leaving the lobby is a clean, permanent exit.
+    if (inProgress && !window.confirm('ออกจากเกม? ที่นั่งของคุณจะถูกเก็บไว้ กดกลับเข้ามาเล่นต่อได้ภายหลัง')) {
+      return;
+    }
+    const code = gameState?.roomCode;
     if (gameState) {
       socket.emit('leave_room', gameState.roomCode);
     }
@@ -260,8 +273,34 @@ function App() {
     setNightResult([]);
     setVoteResult(null);
     setTimeRemaining(null);
-    sessionStorage.removeItem('werewolf_playerId');
-    sessionStorage.removeItem('werewolf_roomCode');
+    if (inProgress) {
+      // Keep werewolf_playerId / werewolf_roomCode so we can reconnect; offer a button.
+      setRejoinCode(code);
+    } else {
+      sessionStorage.removeItem('werewolf_playerId');
+      sessionStorage.removeItem('werewolf_roomCode');
+      setRejoinCode(null);
+    }
+  };
+
+  // Return to a game the player stepped out of (or got disconnected from).
+  const handleRejoin = () => {
+    const pid = sessionStorage.getItem('werewolf_playerId');
+    const code = sessionStorage.getItem('werewolf_roomCode');
+    if (!pid || !code) { setRejoinCode(null); return; }
+    socket.emit('reconnect_player', { roomCode: code, playerId: pid }, (response) => {
+      if (response.success) {
+        setPlayerId(response.playerId);
+        setGameState(response.gameState);
+        setRejoinCode(null);
+        setError('');
+      } else {
+        setError('ไม่พบเกมเดิม (อาจจบไปแล้วหรือถูกปิด)');
+        sessionStorage.removeItem('werewolf_playerId');
+        sessionStorage.removeItem('werewolf_roomCode');
+        setRejoinCode(null);
+      }
+    });
   };
 
   const renderPhase = () => {
@@ -333,6 +372,8 @@ function App() {
                 onCreateRoom={handleChooseGame}
                 onJoinRoom={handleJoinRoom}
                 onFetchPublicRooms={fetchPublicRooms}
+                onRejoin={handleRejoin}
+                rejoinCode={rejoinCode}
                 error={error}
              />;
     }

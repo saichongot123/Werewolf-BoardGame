@@ -88,10 +88,14 @@ class WerewolfGame extends BaseRoom {
     return true;
   }
 
-  assignRoles() {
+  // Single source of truth for the role line-up given the current player count and
+  // host settings. Returns the ordered (pre-shuffle) role list actually dealt PLUS the
+  // list of enabled optional roles that had to be dropped for lack of seats. Both the
+  // real deal (assignRoles) and the lobby preview/warnings go through here so they can
+  // never disagree.
+  plannedRoles() {
     const numPlayers = this.players.length;
-    let numWerewolves = Math.floor(numPlayers / 3);
-    if (numWerewolves < 1) numWerewolves = 1;
+    const numWerewolves = Math.max(1, Math.floor(numPlayers / 3));
 
     let roles = [];
     for (let i = 0; i < numWerewolves; i++) roles.push('Werewolf');
@@ -103,13 +107,24 @@ class WerewolfGame extends BaseRoom {
     if (this.settings.enableWitch) roles.push('Witch');
     if (this.settings.enableCupid) roles.push('Cupid');
 
-    while (roles.length < numPlayers) {
-      roles.push('Villager');
-    }
+    while (roles.length < numPlayers) roles.push('Villager');
 
+    const dropped = [];
     if (roles.length > numPlayers) {
+      // slice(0, numPlayers) keeps the first N roles; the trailing overflow is the
+      // roles that get silently dropped. Villagers come last so they're cut first;
+      // beyond that it eats optional roles (Cupid, then Witch, Hunter, Fool).
+      for (const r of roles.slice(numPlayers)) {
+        if (r !== 'Villager') dropped.push(r);
+      }
       roles = roles.slice(0, numPlayers);
     }
+
+    return { roles, dropped, numWerewolves };
+  }
+
+  assignRoles() {
+    let roles = this.plannedRoles().roles;
 
     // Shuffle roles
     for (let i = roles.length - 1; i > 0; i--) {
@@ -394,9 +409,10 @@ class WerewolfGame extends BaseRoom {
     const voter = this.getPlayer(voterId);
     if (!voter || !voter.isAlive) return;
 
-    if (targetId) { // Can be null if skipped
-       this.votes.set(voterId, targetId);
-    }
+    // Overwrites any previous vote (players may change their mind while the vote
+    // is open). A null target means "skip" — drop them from the tally.
+    if (targetId) this.votes.set(voterId, targetId);
+    else this.votes.delete(voterId);
     voter.hasVoted = true;
   }
 
@@ -500,9 +516,19 @@ class WerewolfGame extends BaseRoom {
   handleEvent(event, player, payload, ctx) {
     switch (event) {
       case 'game_action': {
-        // Generic channel — used for lobby bot management.
+        // Generic channel — lobby bot management + host closing the day vote.
         if (payload?.type === 'add_bot') return this.handleAddBot(player, ctx);
         if (payload?.type === 'remove_bot') return this.handleRemoveBot(player, ctx);
+        if (payload?.type === 'close_vote') {
+          // Host force-resolves the vote now (after the table has agreed), even if
+          // not everyone has clicked. Same resolution path as all-voted/timeout.
+          if (this.phase !== 'VOTING' || !player?.isHost) return;
+          ctx.stopTimer();
+          this.resolveVoting();
+          this.startNextNightOrEnd();
+          this.transition(ctx);
+          return;
+        }
         return;
       }
 
@@ -559,15 +585,11 @@ class WerewolfGame extends BaseRoom {
 
       case 'vote': {
         if (this.phase !== 'VOTING' || !player || !player.isAlive) return;
+        // Voting stays OPEN so players can change their mind and watch the live
+        // tally. It resolves only when the host closes it (close_vote) or the
+        // timer runs out — never automatically on "everyone has voted once".
         this.handleVote(player.id, payload.targetId);
-        if (this.checkVotingEnd()) {
-          ctx.stopTimer();
-          this.resolveVoting();
-          this.startNextNightOrEnd();
-          this.transition(ctx);
-        } else {
-          ctx.broadcast();
-        }
+        ctx.broadcast();
         return;
       }
 
@@ -753,14 +775,9 @@ class WerewolfGame extends BaseRoom {
         const t = this._randOf(pool);
         this.handleVote(b.id, t ? t.id : null);
       });
-      if (this.checkVotingEnd()) {
-        ctx.stopTimer();
-        this.resolveVoting();
-        this.startNextNightOrEnd();
-        this.transition(ctx);
-      } else {
-        ctx.broadcast();
-      }
+      // Voting no longer auto-resolves — the host closes it (or the timer does),
+      // so bots just cast their votes and the tally updates.
+      ctx.broadcast();
       return;
     }
 
@@ -804,18 +821,15 @@ class WerewolfGame extends BaseRoom {
     const order = ['Werewolf', 'WolfCub', 'Seer', 'Doctor', 'Witch', 'Cupid', 'Hunter', 'Fool', 'Villager'];
     const counts = {};
     if (this.phase === 'LOBBY') {
-      const n = this.players.length;
-      let w = Math.max(1, Math.floor(n / 3));
-      if (this.settings.enableWolfCub && w >= 1) { counts.WolfCub = 1; w -= 1; }
-      if (w > 0) counts.Werewolf = w;
-      counts.Seer = 1; counts.Doctor = 1;
-      if (this.settings.enableFool) counts.Fool = 1;
-      if (this.settings.enableHunter) counts.Hunter = 1;
-      if (this.settings.enableWitch) counts.Witch = 1;
-      if (this.settings.enableCupid) counts.Cupid = 1;
-      const used = Object.values(counts).reduce((s, c) => s + c, 0);
-      const villagers = n - used;
-      if (villagers > 0) counts.Villager = villagers;
+      // Mirror the real deal exactly (including the capacity cap) so the preview never
+      // shows a role that would actually be dropped at game start.
+      this.plannedRoles().roles.forEach(r => { counts[r] = (counts[r] || 0) + 1; });
+      // Wolf Cub is dealt as a flag on one Werewolf; surface it as its own preview row.
+      if (this.settings.enableWolfCub && counts.Werewolf > 0) {
+        counts.WolfCub = 1;
+        counts.Werewolf -= 1;
+        if (counts.Werewolf === 0) delete counts.Werewolf;
+      }
     } else {
       this.players.forEach(p => {
         const key = p.isCub ? 'WolfCub' : p.role;
@@ -823,6 +837,30 @@ class WerewolfGame extends BaseRoom {
       });
     }
     return order.filter(r => counts[r]).map(r => ({ role: r, count: counts[r] }));
+  }
+
+  // Lobby balance advisory (approach "A"): surface — but do NOT block — set-ups that
+  // would deal a degenerate game. Returns Thai warning strings for the host to see.
+  getBalanceWarnings() {
+    if (this.phase !== 'LOBBY') return [];
+    const th = {
+      Fool: 'คนโง่', Hunter: 'นายพราน', Witch: 'แม่มด',
+      Cupid: 'คิวปิด', Villager: 'ชาวบ้าน',
+    };
+    const warnings = [];
+    const { roles, dropped } = this.plannedRoles();
+
+    if (dropped.length > 0) {
+      const names = dropped.map(r => th[r] || r).join(', ');
+      warnings.push(`บทบาทที่เปิดไว้เกินจำนวนผู้เล่น จะถูกตัดออก: ${names} (เพิ่มผู้เล่นหรือปิดบทบาทเสริมบางตัว)`);
+    }
+
+    const villagers = roles.filter(r => r === 'Villager').length;
+    if (villagers === 0) {
+      warnings.push('ไม่มีชาวบ้านเลย — เกมจะมีแต่บทบาทพิเศษ ทำให้เสียสมดุล แนะนำให้มีชาวบ้านอย่างน้อย 1 คน');
+    }
+
+    return warnings;
   }
 
   // Returns state, selectively revealing roles based on who is asking
@@ -915,6 +953,7 @@ class WerewolfGame extends BaseRoom {
        winner: this.winner,
        settings: this.settings,
        roleSetup: this.getRoleSetup(),
+       balanceWarnings: this.getBalanceWarnings(),
        maxPlayers: this.maxPlayers || 10,
        messages: safeMessages,
        pendingHunter: this.pendingHunter,
