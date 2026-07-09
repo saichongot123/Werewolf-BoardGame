@@ -16,8 +16,8 @@ function Lobby({ gameState, currentPlayer, onCreateRoom, onJoinRoom, onStartGame
   if (!gameState) {
     return (
       <div className="glass-panel">
-        <h1>เกมมนุษย์หมาป่า</h1>
-        <p className="status-message">เกมแห่งการหลอกลวงและการเอาชีวิตรอด</p>
+        <h1>ปาร์ตี้บอร์ดเกม</h1>
+        <p className="status-message">รวมเกมปาร์ตี้ เล่นสนุกกับเพื่อนได้ทุกที่</p>
 
         {rejoinCode && onRejoin && (
           <div style={{ marginBottom: '1rem', padding: '0.9rem', borderRadius: '12px', background: 'rgba(69,160,158,0.15)', border: '1px solid var(--accent-color)', textAlign: 'center' }}>
